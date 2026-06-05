@@ -1,0 +1,69 @@
+use crate::config::ProviderConfig;
+
+pub fn builtin_presets() -> Vec<ProviderConfig> {
+    vec![
+        ProviderConfig {
+            id: "deepseek".into(),
+            name: "DeepSeek".into(),
+            base_url: "https://api.deepseek.com/anthropic".into(),
+            api_key_env: "DEEPSEEK_API_KEY".into(),
+            default_model: "deepseek-v4-pro".into(),
+            api_model: "deepseek-v4-pro".into(),
+            wire_api: "anthropic".into(),
+        },
+        ProviderConfig {
+            id: "qwen".into(),
+            name: "千问".into(),
+            base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".into(),
+            api_key_env: "DASHSCOPE_API_KEY".into(),
+            default_model: "qwen3.7-max".into(),
+            api_model: "qwen3.7-max".into(),
+            wire_api: "chat".into(),
+        },
+        ProviderConfig {
+            id: "zhipu".into(),
+            name: "智谱".into(),
+            base_url: "https://open.bigmodel.cn/api/paas/v4".into(),
+            api_key_env: "ZHIPU_API_KEY".into(),
+            default_model: "glm-5.1".into(),
+            api_model: "glm-5.1".into(),
+            wire_api: "chat".into(),
+        },
+        ProviderConfig {
+            id: "kimi".into(),
+            name: "Kimi".into(),
+            base_url: "https://api.moonshot.cn/v1".into(),
+            api_key_env: "MOONSHOT_API_KEY".into(),
+            default_model: "kimi-k2.6".into(),
+            api_model: "kimi-k2.6".into(),
+            wire_api: "chat".into(),
+        },
+        ProviderConfig {
+            id: "minimax".into(),
+            name: "Minimax".into(),
+            base_url: "https://api.minimaxi.com/v1".into(),
+            api_key_env: "MINIMAX_API_KEY".into(),
+            default_model: "minimax-m3".into(),
+            api_model: "MiniMax-M3".into(),
+            wire_api: "chat".into(),
+        },
+        ProviderConfig {
+            id: "mimo".into(),
+            name: "小米 MiMo".into(),
+            base_url: "https://api.xiaomimimo.com/v1".into(),
+            api_key_env: "MIMO_API_KEY".into(),
+            default_model: "mimo-v2.5-pro".into(),
+            api_model: "mimo-v2.5-pro".into(),
+            wire_api: "chat".into(),
+        },
+        ProviderConfig {
+            id: "custom".into(),
+            name: "中转站".into(),
+            base_url: String::new(),
+            api_key_env: "CUSTOM_API_KEY".into(),
+            default_model: "gpt-5.5".into(),
+            api_model: "gpt-5.5".into(),
+            wire_api: "chat".into(),
+        },
+    ]
+}

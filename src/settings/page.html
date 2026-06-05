@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Claude Code Helper · 设置</title>
+  <link rel="icon" type="image/svg+xml" href="/admin/brand-icon.svg" />
+  <style>
+    :root {
+      --bg: #eef2f7;
+      --surface: #ffffff;
+      --text: #0f172a;
+      --text-secondary: #64748b;
+      --text-muted: #94a3b8;
+      --border: #e2e8f0;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --primary-soft: rgba(37, 99, 235, 0.1);
+      --success: #059669;
+      --success-bg: #ecfdf5;
+      --success-border: #a7f3d0;
+      --error: #dc2626;
+      --error-bg: #fef2f2;
+      --error-border: #fecaca;
+      --info-bg: #eff6ff;
+      --info-border: #bfdbfe;
+      --info: #1d4ed8;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+      --font: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .shell {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 20px 0;
+      gap: 10px;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 2px 2px;
+      flex-shrink: 0;
+    }
+
+    .brand-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    button.clear-all {
+      height: 32px;
+      padding: 0 12px;
+      border: 1px solid var(--error-border);
+      border-radius: var(--radius-sm);
+      background: var(--error-bg);
+      color: var(--error);
+      font-size: 12px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    button.clear-all:hover:not(:disabled) {
+      background: #fee2e2;
+      border-color: #fca5a5;
+    }
+
+    button.clear-all:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    button.clear-all:focus-visible {
+      outline: 2px solid var(--error);
+      outline-offset: 2px;
+    }
+
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      flex-shrink: 0;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);
+    }
+
+    .brand-icon svg {
+      display: block;
+      width: 32px;
+      height: 32px;
+    }
+
+    .brand-text h1 {
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+      line-height: 1.2;
+    }
+
+    .brand-text p {
+      margin-top: 2px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 14px;
+      flex-shrink: 0;
+    }
+
+    .card-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .field + .field { margin-top: 12px; }
+
+    .field-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 6px;
+    }
+
+    .text-input,
+    .input-wrap input {
+      width: 100%;
+      height: 40px;
+      min-height: 40px;
+      padding: 0 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--text);
+      background: #fff;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .text-input:hover,
+    .input-wrap input:hover {
+      border-color: #cbd5e1;
+    }
+
+    .text-input:focus,
+    .input-wrap input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-soft);
+    }
+
+    .text-input.readonly {
+      background: #f8fafc;
+      color: var(--text-secondary);
+      cursor: default;
+    }
+
+    .provider-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .provider-chip {
+      height: 32px;
+      padding: 0 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: #fff;
+      font-size: 13px;
+      font-family: inherit;
+      color: #334155;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    }
+
+    .provider-chip:hover {
+      border-color: #cbd5e1;
+      background: #f8fafc;
+    }
+
+    .provider-chip.active {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .provider-chip:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-wrap input {
+      padding-right: 44px;
+    }
+
+    .toggle-key {
+      position: absolute;
+      right: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 36px;
+      height: 36px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .toggle-key:hover {
+      background: #f1f5f9;
+      color: var(--text-secondary);
+    }
+
+    .toggle-key:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 1px;
+    }
+
+    .field-foot {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .field-foot a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .field-foot a:hover { text-decoration: underline; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      height: 20px;
+      padding: 0 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #f1f5f9;
+      color: #64748b;
+    }
+
+    .badge.ok {
+      background: var(--success-bg);
+      color: var(--success);
+    }
+
+    .footer {
+      flex-shrink: 0;
+      padding: 10px 20px 14px;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+    }
+
+    .status {
+      min-height: 0;
+      margin-bottom: 10px;
+      padding: 0;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      line-height: 1.45;
+      display: none;
+      overflow: hidden;
+      transition: opacity 0.2s ease;
+    }
+
+    .status.show {
+      display: block;
+      padding: 10px 12px;
+    }
+
+    .status.ok {
+      background: var(--success-bg);
+      color: var(--success);
+      border: 1px solid var(--success-border);
+    }
+
+    .status.err {
+      background: var(--error-bg);
+      color: var(--error);
+      border: 1px solid var(--error-border);
+    }
+
+    .status.info {
+      background: var(--info-bg);
+      color: var(--info);
+      border: 1px solid var(--info-border);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    button.action {
+      flex: 1;
+      height: 40px;
+      min-height: 40px;
+      padding: 0 16px;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+    }
+
+    button.action:active:not(:disabled) {
+      transform: scale(0.985);
+    }
+
+    button.action:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    #testBtn {
+      background: var(--surface);
+      color: #334155;
+      border: 1px solid var(--border);
+    }
+
+    #testBtn:hover:not(:disabled) {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+
+    #saveBtn {
+      background: var(--primary);
+      color: #fff;
+      border: 1px solid transparent;
+      box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+    }
+
+    #saveBtn:hover:not(:disabled) {
+      background: var(--primary-hover);
+    }
+
+    button.action:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(15, 23, 42, 0.45);
+      z-index: 1000;
+    }
+
+    .modal-backdrop.show {
+      display: flex;
+    }
+
+    .modal {
+      width: min(100%, 360px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 16px 48px rgba(15, 23, 42, 0.18);
+      padding: 18px 18px 14px;
+    }
+
+    .modal-title {
+      font-size: 15px;
+      font-weight: 650;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .modal-body {
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .modal-actions button {
+      height: 36px;
+      min-width: 72px;
+      padding: 0 14px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    .modal-cancel {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: #334155;
+    }
+
+    .modal-cancel:hover {
+      background: #f8fafc;
+    }
+
+    .modal-confirm {
+      border: 1px solid transparent;
+      background: var(--error);
+      color: #fff;
+    }
+
+    .modal-confirm:hover {
+      background: #b91c1c;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="brand">
+      <div class="brand-main">
+        <div class="brand-icon" aria-hidden="true"><!--BRAND_ICON--></div>
+        <div class="brand-text">
+          <h1>Claude Code Helper</h1>
+          <p id="brandSubtitle">配置 API Key</p>
+        </div>
+      </div>
+      <button type="button" class="clear-all" id="clearAllBtn" title="清除所有 Helper 配置">清除所有配置</button>
+    </header>
+
+    <section class="card" aria-labelledby="config-section">
+      <div class="card-title" id="config-section">配置</div>
+      <div class="field">
+        <label class="field-label">厂商</label>
+        <div class="provider-grid" id="providerGrid" role="radiogroup" aria-label="选择厂商"></div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="baseUrlInput">Base URL</label>
+        <input id="baseUrlInput" class="text-input" type="url" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false" />
+        <p class="field-foot" id="baseUrlHint">OpenAI 兼容 API 地址，末尾一般带 /v1</p>
+      </div>
+      <div class="field">
+        <label class="field-label" for="apiKey">
+          API Key
+          <span id="keyBadge" class="badge">未配置</span>
+        </label>
+        <div class="input-wrap">
+          <input id="apiKey" type="password" placeholder="粘贴 sk- 开头的 Key" autocomplete="off" spellcheck="false" />
+          <button type="button" class="toggle-key" id="toggleKey" aria-label="显示 Key" title="显示 Key">
+            <svg id="eyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+        <p class="field-foot" id="keyFoot">还没有 Key？<a href="#" target="_blank" rel="noopener">点此去官网申请</a></p>
+      </div>
+    </section>
+  </div>
+
+  <footer class="footer">
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+    <div class="actions">
+      <button type="button" class="action" id="testBtn">测试连接</button>
+      <button type="button" class="action" id="saveBtn">保存</button>
+    </div>
+  </footer>
+
+  <div class="modal-backdrop" id="confirmModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
+      <div class="modal-title" id="confirmModalTitle">清除所有配置？</div>
+      <div class="modal-body" id="confirmModalBody"></div>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" id="confirmModalCancel">取消</button>
+        <button type="button" class="modal-confirm" id="confirmModalOk">确定清除</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let providers = [];
+    let selectedId = '';
+    let runtimeActive = '';
+
+    function showStatus(text, kind) {
+      const el = document.getElementById('status');
+      el.textContent = text;
+      el.className = 'status show ' + (kind || '');
+    }
+
+    function hideStatus() {
+      const el = document.getElementById('status');
+      el.className = 'status';
+      el.textContent = '';
+    }
+
+    function selected() {
+      return providers.find(p => p.id === selectedId) || null;
+    }
+
+    function isCustom() {
+      return selectedId === 'custom';
+    }
+
+    function customPayload() {
+      if (!isCustom()) return {};
+      return { base_url: document.getElementById('baseUrlInput').value.trim() };
+    }
+
+    function updateSubtitle() {
+      const p = selected();
+      document.getElementById('brandSubtitle').textContent =
+        p ? '配置 ' + p.name + ' 的 API Key' : '配置 API Key';
+    }
+
+    function renderProviderGrid() {
+      const grid = document.getElementById('providerGrid');
+      grid.innerHTML = '';
+      providers.forEach(p => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'provider-chip' + (p.id === selectedId ? ' active' : '');
+        btn.setAttribute('role', 'radio');
+        btn.setAttribute('aria-checked', p.id === selectedId ? 'true' : 'false');
+        let label = p.name;
+        if (p.id === runtimeActive) label += ' · 当前';
+        btn.textContent = label;
+        btn.addEventListener('click', () => selectProvider(p.id));
+        grid.appendChild(btn);
+      });
+    }
+
+    function selectProvider(id) {
+      if (id === selectedId) return;
+      selectedId = id;
+      hideStatus();
+      renderProviderGrid();
+      refreshBaseUrlField();
+      refreshKeyField();
+      updateSignupLink();
+      updateKeyBadge(!!selected()?.key_configured);
+      updateSubtitle();
+    }
+
+    function refreshBaseUrlField() {
+      const p = selected();
+      const input = document.getElementById('baseUrlInput');
+      const hint = document.getElementById('baseUrlHint');
+      const custom = isCustom();
+
+      input.value = p?.base_url || '';
+      input.readOnly = !custom;
+      input.classList.toggle('readonly', !custom);
+      input.placeholder = custom ? 'https://api.example.com/v1' : '';
+
+      hint.textContent = custom
+        ? '中转站 API 地址，末尾一般带 /v1'
+        : '官方地址（只读）';
+    }
+
+    function updateSignupLink() {
+      const p = selected();
+      const foot = document.getElementById('keyFoot');
+      if (isCustom()) {
+        foot.textContent = 'Key 由 API 服务商提供';
+        return;
+      }
+      if (p?.signup_url) {
+        foot.innerHTML = '还没有 Key？<a href="' + p.signup_url + '" target="_blank" rel="noopener">点此去 ' + p.name + ' 官网申请</a>';
+      } else {
+        foot.innerHTML = '还没有 Key？<a href="#" target="_blank" rel="noopener">点此去官网申请</a>';
+      }
+    }
+
+    function updateKeyBadge(configured) {
+      const badge = document.getElementById('keyBadge');
+      if (configured) {
+        badge.textContent = '已配置';
+        badge.className = 'badge ok';
+      } else {
+        badge.textContent = '未配置';
+        badge.className = 'badge';
+      }
+    }
+
+    function maskKey(key) {
+      if (key.length <= 8) return '***';
+      return key.slice(0, 4) + '...' + key.slice(-4);
+    }
+
+    function refreshKeyField() {
+      const p = selected();
+      const input = document.getElementById('apiKey');
+      input.value = '';
+      if (p?.key_preview) {
+        input.placeholder = '已保存 ' + p.key_preview + '，粘贴可覆盖';
+      } else {
+        input.placeholder = '粘贴 sk- 开头的 Key';
+      }
+    }
+
+    function initProviders(list, active) {
+      providers = list;
+      runtimeActive = active || '';
+      selectedId = active || (list[0] && list[0].id) || '';
+      renderProviderGrid();
+      updateSubtitle();
+      updateSignupLink();
+      updateKeyBadge(!!selected()?.key_configured);
+      refreshBaseUrlField();
+      refreshKeyField();
+    }
+
+    document.getElementById('baseUrlInput').addEventListener('input', () => hideStatus());
+
+    document.getElementById('toggleKey').addEventListener('click', () => {
+      const input = document.getElementById('apiKey');
+      const btn = document.getElementById('toggleKey');
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.setAttribute('aria-label', show ? '隐藏 Key' : '显示 Key');
+      btn.title = show ? '隐藏 Key' : '显示 Key';
+    });
+
+    async function api(path, body) {
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      return res.json();
+    }
+
+    function showConfirmDialog(title, message) {
+      return new Promise((resolve) => {
+        const backdrop = document.getElementById('confirmModal');
+        const titleEl = document.getElementById('confirmModalTitle');
+        const bodyEl = document.getElementById('confirmModalBody');
+        const okBtn = document.getElementById('confirmModalOk');
+        const cancelBtn = document.getElementById('confirmModalCancel');
+
+        titleEl.textContent = title;
+        bodyEl.textContent = message;
+        backdrop.hidden = false;
+        backdrop.classList.add('show');
+        cancelBtn.focus();
+
+        function close(result) {
+          backdrop.classList.remove('show');
+          backdrop.hidden = true;
+          okBtn.removeEventListener('click', onOk);
+          cancelBtn.removeEventListener('click', onCancel);
+          backdrop.removeEventListener('click', onBackdrop);
+          document.removeEventListener('keydown', onKeydown);
+          resolve(result);
+        }
+
+        function onOk() { close(true); }
+        function onCancel() { close(false); }
+        function onBackdrop(e) {
+          if (e.target === backdrop) close(false);
+        }
+        function onKeydown(e) {
+          if (e.key === 'Escape') close(false);
+          if (e.key === 'Enter') close(true);
+        }
+
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        backdrop.addEventListener('click', onBackdrop);
+        document.addEventListener('keydown', onKeydown);
+      });
+    }
+
+    document.getElementById('testBtn').addEventListener('click', async () => {
+      const p = selected();
+      const key = document.getElementById('apiKey').value.trim();
+      if (!key && !p?.key_configured) {
+        showStatus('请先粘贴 API Key', 'err');
+        return;
+      }
+      if (isCustom() && !document.getElementById('baseUrlInput').value.trim() && !p.base_url) {
+        showStatus('请填写 Base URL', 'err');
+        return;
+      }
+      showStatus('正在测试连接…', 'info');
+      document.getElementById('testBtn').disabled = true;
+      try {
+        const data = await api('/admin/settings/test', {
+          provider_id: p.id,
+          api_key: key,
+          ...customPayload(),
+        });
+        showStatus(data.message || (data.ok ? '连接成功' : '连接失败'), data.ok ? 'ok' : 'err');
+      } catch (e) {
+        showStatus('测试失败：' + e.message, 'err');
+      } finally {
+        document.getElementById('testBtn').disabled = false;
+      }
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+      const p = selected();
+      const key = document.getElementById('apiKey').value.trim();
+      if (!key && !p?.key_configured) {
+        showStatus('请先粘贴 API Key', 'err');
+        return;
+      }
+      if (isCustom() && !document.getElementById('baseUrlInput').value.trim() && !p.base_url) {
+        showStatus('请填写 Base URL', 'err');
+        return;
+      }
+      if (p.id === 'deepseek' && key && !key.startsWith('sk-')) {
+        showStatus('DeepSeek Key 通常以 sk- 开头，请检查是否复制完整', 'err');
+        return;
+      }
+      showStatus('正在保存…', 'info');
+      document.getElementById('saveBtn').disabled = true;
+      try {
+        const data = await api('/admin/settings/save', {
+          provider_id: p.id,
+          api_key: key,
+          ...customPayload(),
+        });
+        if (data.ok) {
+          showStatus(data.message || '已保存，请重启 Claude Code 生效', 'ok');
+          if (isCustom()) {
+            p.base_url = document.getElementById('baseUrlInput').value.trim();
+          }
+          if (key) {
+            p.key_configured = true;
+            p.key_preview = maskKey(key);
+          }
+          updateKeyBadge(true);
+          refreshKeyField();
+        } else {
+          showStatus(data.message || '保存失败', 'err');
+        }
+      } catch (e) {
+        showStatus('保存失败：' + e.message, 'err');
+      } finally {
+        document.getElementById('saveBtn').disabled = false;
+      }
+    });
+
+    document.getElementById('clearAllBtn').addEventListener('click', async () => {
+      const ok = await showConfirmDialog(
+        '清除所有配置？',
+        '将删除全部 API Key、重置厂商/模型与中转站地址，并清空请求日志。Claude Code 需重新配置。'
+      );
+      if (!ok) return;
+      showStatus('正在清除…', 'info');
+      document.getElementById('clearAllBtn').disabled = true;
+      try {
+        const data = await api('/admin/settings/clear-all', {});
+        if (data.ok) {
+          showStatus(data.message || '已清除', 'ok');
+          const boot = await fetch('/admin/settings/bootstrap').then(r => r.json());
+          if (!boot.error) {
+            initProviders(boot.providers || [], boot.active);
+          }
+          document.getElementById('apiKey').value = '';
+        } else {
+          showStatus(data.message || '清除失败', 'err');
+        }
+      } catch (e) {
+        showStatus('清除失败：' + e.message, 'err');
+      } finally {
+        document.getElementById('clearAllBtn').disabled = false;
+      }
+    });
+
+    fetch('/admin/settings/bootstrap')
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) {
+          showStatus('加载失败：' + data.error, 'err');
+          return;
+        }
+        initProviders(data.providers || [], data.active);
+      })
+      .catch(e => showStatus('加载失败：' + e.message, 'err'));
+  </script>
+</body>
+</html>

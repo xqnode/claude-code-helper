@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Claude Code Helper · 请求日志</title>
+  <style>
+    :root {
+      --bg: #eef2f7;
+      --surface: #ffffff;
+      --text: #0f172a;
+      --text-secondary: #64748b;
+      --text-muted: #94a3b8;
+      --border: #e2e8f0;
+      --primary: #2563eb;
+      --primary-soft: rgba(37, 99, 235, 0.1);
+      --success: #059669;
+      --success-bg: #ecfdf5;
+      --error: #dc2626;
+      --error-bg: #fef2f2;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+      --font: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+      --mono: "Cascadia Mono", "Consolas", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      min-height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .shell {
+      flex: 1 1 auto;
+      min-height: 0;
+      min-width: 0;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: 14px 16px 0;
+      gap: 10px;
+      overflow: hidden;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .header-main h1 {
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    .header-main p {
+      margin-top: 2px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    button.tool {
+      height: 32px;
+      padding: 0 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: #334155;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    button.tool:hover { background: #f8fafc; }
+    button.tool.primary {
+      background: var(--primary);
+      border-color: transparent;
+      color: #fff;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      font-size: 16px;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .table-wrap {
+      flex: 1 1 auto;
+      min-height: 0;
+      min-width: 0;
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: auto;
+    }
+
+    table {
+      width: 100%;
+      min-width: 860px;
+      border-collapse: collapse;
+      font-size: 12px;
+      table-layout: fixed;
+    }
+
+    thead {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f8fafc;
+    }
+
+    th, td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: middle;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    th:nth-child(1), td:nth-child(1) { width: 96px; }
+    th:nth-child(2), td:nth-child(2) { width: 72px; }
+    th:nth-child(3), td:nth-child(3) { width: 168px; }
+    th:nth-child(4), td:nth-child(4) { width: 72px; }
+    th:nth-child(5), td:nth-child(5) { width: 72px; }
+    th:nth-child(6), td:nth-child(6) { width: 72px; }
+    th:nth-child(7), td:nth-child(7) { width: 88px; }
+    th:nth-child(8), td:nth-child(8) { width: 88px; }
+    th:nth-child(9), td:nth-child(9) { width: 112px; }
+
+    th {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.03em;
+    }
+
+    td.mono {
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    tr.ok td:first-child { box-shadow: inset 3px 0 0 var(--success); }
+    tr.err td:first-child { box-shadow: inset 3px 0 0 var(--error); }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      height: 20px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .empty.hidden {
+      display: none;
+    }
+
+    .empty {
+      padding: 48px 16px;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+
+    .footer {
+      flex-shrink: 0;
+      width: 100%;
+      padding: 8px 16px 12px;
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: right;
+    }
+
+    @media (max-width: 640px) {
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="header">
+      <div class="header-main">
+        <h1>请求日志</h1>
+        <p>最近代理请求 · 自动刷新</p>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="tool" id="refreshBtn">刷新</button>
+        <button type="button" class="tool" id="clearBtn">清空</button>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="stat">
+        <div class="stat-label">请求数</div>
+        <div class="stat-value" id="statCount">0</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">输入 Token</div>
+        <div class="stat-value" id="statIn">0</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">输出 Token</div>
+        <div class="stat-value" id="statOut">0</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">估算费用</div>
+        <div class="stat-value" id="statCost">—</div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>时间（北京时间）</th>
+            <th>厂商</th>
+            <th>模型</th>
+            <th>输入</th>
+            <th>输出</th>
+            <th>合计</th>
+            <th>费用</th>
+            <th>耗时</th>
+            <th>状态</th>
+          </tr>
+        </thead>
+        <tbody id="logBody"></tbody>
+      </table>
+      <div class="empty hidden" id="emptyState">暂无请求记录，使用 Claude Code 发起对话后会出现在这里。</div>
+    </div>
+  </div>
+
+  <footer class="footer" id="footerHint">保留最近 300 条 · 已保存至 ~/.claude-code-helper/request-log.sqlite · 费用为公开价估算</footer>
+
+  <script>
+    const logBody = document.getElementById('logBody');
+    const emptyState = document.getElementById('emptyState');
+
+    function fmtNum(n) {
+      return Number(n || 0).toLocaleString('zh-CN');
+    }
+
+    function fmtCost(summary) {
+      if (summary.total_cost_yuan == null) return '—';
+      const v = summary.total_cost_yuan;
+      return v < 0.01 ? '约 ¥' + v.toFixed(4) : '约 ¥' + v.toFixed(3);
+    }
+
+    function render(data) {
+      const entries = data.entries || [];
+      const summary = data.summary || {};
+      document.getElementById('statCount').textContent = fmtNum(summary.count);
+      document.getElementById('statIn').textContent = fmtNum(summary.total_input_tokens);
+      document.getElementById('statOut').textContent = fmtNum(summary.total_output_tokens);
+      document.getElementById('statCost').textContent = fmtCost(summary);
+
+      logBody.innerHTML = '';
+      if (!entries.length) {
+        emptyState.classList.remove('hidden');
+        return;
+      }
+      emptyState.classList.add('hidden');
+
+      entries.forEach(entry => {
+        const tr = document.createElement('tr');
+        tr.className = entry.ok ? 'ok' : 'err';
+        tr.innerHTML =
+          '<td class="mono">' + entry.time_label + '</td>' +
+          '<td>' + entry.provider_name + '</td>' +
+          '<td class="mono" title="' + entry.model + '">' + entry.model + '</td>' +
+          '<td class="mono">' + fmtNum(entry.input_tokens) + '</td>' +
+          '<td class="mono">' + fmtNum(entry.output_tokens) + '</td>' +
+          '<td class="mono">' + fmtNum(entry.total_tokens) + '</td>' +
+          '<td>' + entry.cost_label + '</td>' +
+          '<td class="mono">' + entry.duration_ms + ' ms</td>' +
+          '<td><span class="pill">' + entry.status + (entry.stream ? ' · 流' : '') + '</span></td>';
+        logBody.appendChild(tr);
+      });
+    }
+
+    async function loadLogs() {
+      const res = await fetch('/admin/logs/bootstrap');
+      const data = await res.json();
+      render(data);
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', loadLogs);
+    document.getElementById('clearBtn').addEventListener('click', async () => {
+      if (!confirm('确定清空所有请求日志？')) return;
+      await fetch('/admin/logs/clear', { method: 'POST' });
+      await loadLogs();
+    });
+
+    loadLogs();
+    setInterval(loadLogs, 3000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,415 @@
+use std::path::{Path, PathBuf};
+
+use serde_json::{json, Value};
+
+use crate::config::{self, AppConfig, ProviderConfig};
+
+pub const GATEWAY_AUTH_TOKEN: &str = "PROXY_MANAGED";
+pub const DESKTOP_ROLE_HAIKU: &str = "claude-haiku-4-5";
+pub const DESKTOP_ROLE_SONNET: &str = "claude-sonnet-4-6";
+pub const DESKTOP_ROLE_OPUS: &str = "claude-opus-4-8";
+const HELPER_ENTRY_NAME: &str = "Claude Code Helper";
+
+fn local_claude_3p_dir() -> anyhow::Result<PathBuf> {
+    let base = std::env::var("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .or_else(|_| {
+            dirs::data_local_dir().ok_or_else(|| anyhow::anyhow!("无法定位 LOCALAPPDATA"))
+        })?;
+    Ok(base.join("Claude-3p"))
+}
+
+/// Claude Desktop Cowork 读取的 3P Gateway 配置目录。
+pub fn config_library_dir() -> anyhow::Result<PathBuf> {
+    Ok(local_claude_3p_dir()?.join("configLibrary"))
+}
+
+fn claude_desktop_config_path() -> anyhow::Result<PathBuf> {
+    Ok(local_claude_3p_dir()?.join("claude_desktop_config.json"))
+}
+
+pub fn gateway_config_id(port: u16) -> String {
+    format!("00000000-0000-4000-8000-000000{:06}", port as u32 * 10)
+}
+
+pub fn desktop_gateway_base_url(app: &AppConfig) -> String {
+    format!("{}/claude-desktop", app.proxy_base_url())
+}
+
+pub fn sync_desktop_gateway(app: &AppConfig, provider: &ProviderConfig) -> anyhow::Result<()> {
+    let dir = config_library_dir()?;
+    std::fs::create_dir_all(&dir)?;
+    backup_config_library(&dir)?;
+
+    let config_id = gateway_config_id(app.proxy.port);
+    let gateway_url = desktop_gateway_base_url(app);
+    let profile = build_gateway_profile(provider, &gateway_url);
+    let profile_path = dir.join(format!("{config_id}.json"));
+    config::write_atomic(
+        &profile_path,
+        &format!("{}\n", serde_json::to_string_pretty(&profile)?),
+    )?;
+
+    let meta = json!({
+        "appliedId": config_id,
+        "entries": [{
+            "id": config_id,
+            "name": HELPER_ENTRY_NAME
+        }]
+    });
+    config::write_atomic(
+        &dir.join("_meta.json"),
+        &format!("{}\n", serde_json::to_string_pretty(&meta)?),
+    )?;
+
+    cleanup_stale_gateway_profiles(&dir, &config_id)?;
+    sync_desktop_app_config()?;
+    tracing::info!(
+        "已同步 Claude Desktop 双通道 Gateway（Code: {}，Cowork: {gateway_url}）",
+        app.proxy_base_url()
+    );
+    Ok(())
+}
+
+/// 启用 Claude Desktop 第三方推理模式，让 Code / Cowork 都读取 Gateway 配置。
+pub fn sync_desktop_app_config() -> anyhow::Result<()> {
+    let path = claude_desktop_config_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let mut root = if path.exists() {
+        let raw = std::fs::read_to_string(&path)?;
+        serde_json::from_str(&raw).unwrap_or_else(|_| json!({}))
+    } else {
+        json!({})
+    };
+
+    let obj = root
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("claude_desktop_config.json 根节点必须是对象"))?;
+    obj.insert("deploymentMode".into(), Value::String("3p".into()));
+
+    config::write_atomic(&path, &format!("{}\n", serde_json::to_string_pretty(&root)?))?;
+    Ok(())
+}
+
+pub fn clear_desktop_app_config() -> anyhow::Result<()> {
+    let path = match claude_desktop_config_path() {
+        Ok(p) => p,
+        Err(_) => return Ok(()),
+    };
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let raw = std::fs::read_to_string(&path)?;
+    let Ok(mut root) = serde_json::from_str::<Value>(&raw) else {
+        return Ok(());
+    };
+    if let Some(obj) = root.as_object_mut() {
+        obj.remove("deploymentMode");
+    }
+    config::write_atomic(&path, &format!("{}\n", serde_json::to_string_pretty(&root)?))?;
+    Ok(())
+}
+
+pub fn clear_desktop_gateway(port: u16) -> anyhow::Result<()> {
+    let dir = match config_library_dir() {
+        Ok(d) => d,
+        Err(_) => return Ok(()),
+    };
+    if !dir.exists() {
+        return Ok(());
+    }
+
+    let config_id = gateway_config_id(port);
+    let profile_path = dir.join(format!("{config_id}.json"));
+    if profile_path.exists() {
+        std::fs::remove_file(&profile_path)?;
+    }
+
+    let meta_path = dir.join("_meta.json");
+    if meta_path.exists() {
+        let raw = std::fs::read_to_string(&meta_path)?;
+        if let Ok(mut meta) = serde_json::from_str::<Value>(&raw) {
+            if meta.get("appliedId").and_then(|v| v.as_str()) == Some(config_id.as_str()) {
+                if let Some(obj) = meta.as_object_mut() {
+                    obj.remove("appliedId");
+                    obj.insert("entries".into(), Value::Array(vec![]));
+                }
+                config::write_atomic(
+                    &meta_path,
+                    &format!("{}\n", serde_json::to_string_pretty(&meta)?),
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn read_desktop_gateway_base_url() -> anyhow::Result<String> {
+    let dir = config_library_dir()?;
+    let meta_path = dir.join("_meta.json");
+    if !meta_path.exists() {
+        anyhow::bail!("Claude Desktop Gateway 未配置");
+    }
+    let meta: Value = serde_json::from_str(&std::fs::read_to_string(&meta_path)?)?;
+    let applied_id = meta
+        .get("appliedId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Claude Desktop Gateway 未应用配置"))?;
+    let profile_path = dir.join(format!("{applied_id}.json"));
+    if !profile_path.exists() {
+        anyhow::bail!("Claude Desktop Gateway 配置文件不存在");
+    }
+    let profile: Value = serde_json::from_str(&std::fs::read_to_string(&profile_path)?)?;
+    profile
+        .get("inferenceGatewayBaseUrl")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| anyhow::anyhow!("Gateway 配置缺少 inferenceGatewayBaseUrl"))
+}
+
+pub fn desktop_gateway_matches(app: &AppConfig) -> bool {
+    read_desktop_gateway_base_url()
+        .ok()
+        .is_some_and(|url| normalize_gateway_url(&url) == normalize_gateway_url(&desktop_gateway_base_url(app)))
+}
+
+pub fn desktop_app_uses_third_party_mode() -> bool {
+    let Ok(path) = claude_desktop_config_path() else {
+        return false;
+    };
+    if !path.exists() {
+        return false;
+    }
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return false;
+    };
+    let Ok(root) = serde_json::from_str::<Value>(&raw) else {
+        return false;
+    };
+    root.get("deploymentMode")
+        .and_then(|v| v.as_str())
+        .is_some_and(|mode| mode.eq_ignore_ascii_case("3p"))
+}
+
+pub fn request_uses_desktop_roles(body: &[u8]) -> bool {
+    let Ok(value) = serde_json::from_slice::<Value>(body) else {
+        return false;
+    };
+    let Some(model) = value.get("model").and_then(|v| v.as_str()) else {
+        return false;
+    };
+    is_desktop_role_model(model)
+}
+
+pub fn is_desktop_role_model(model: &str) -> bool {
+    let lower = model.to_ascii_lowercase();
+    lower.starts_with("claude-")
+        && (lower.contains("haiku") || lower.contains("sonnet") || lower.contains("opus"))
+}
+
+pub fn build_inference_models(provider: &ProviderConfig) -> Vec<Value> {
+    let flash = display_label_for_tier(provider, "flash");
+    let pro = display_label_for_tier(provider, "pro");
+    let sonnet = display_label_for_tier(provider, "flash");
+    let supports_1m = provider_supports_1m(provider);
+
+    vec![
+        json!({
+            "labelOverride": flash,
+            "name": DESKTOP_ROLE_HAIKU
+        }),
+        json!({
+            "labelOverride": pro,
+            "name": DESKTOP_ROLE_OPUS,
+            "supports1m": supports_1m
+        }),
+        json!({
+            "labelOverride": sonnet,
+            "name": DESKTOP_ROLE_SONNET,
+            "supports1m": supports_1m
+        }),
+    ]
+}
+
+pub fn map_desktop_model(requested: &str, provider: &ProviderConfig) -> String {
+    let lower = requested.to_ascii_lowercase();
+    if lower.contains("haiku") {
+        return upstream_model_for_tier(provider, "flash");
+    }
+    if lower.contains("opus") {
+        return upstream_model_for_tier(provider, "pro");
+    }
+    if lower.contains("sonnet") {
+        return upstream_model_for_tier(provider, "flash");
+    }
+    provider.upstream_model().to_string()
+}
+
+pub fn rewrite_request_model(body: &[u8], provider: &ProviderConfig) -> anyhow::Result<Vec<u8>> {
+    let mut value: Value = serde_json::from_slice(body)?;
+    let requested = value
+        .get("model")
+        .and_then(|v| v.as_str())
+        .unwrap_or(DESKTOP_ROLE_SONNET);
+    let mapped = map_desktop_model(requested, provider);
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("model".into(), Value::String(mapped));
+    }
+    Ok(serde_json::to_vec(&value)?)
+}
+
+fn build_gateway_profile(provider: &ProviderConfig, gateway_url: &str) -> Value {
+    json!({
+        "coworkEgressAllowedHosts": ["*"],
+        "disableDeploymentModeChooser": true,
+        "inferenceGatewayApiKey": GATEWAY_AUTH_TOKEN,
+        "inferenceGatewayAuthScheme": "bearer",
+        "inferenceGatewayBaseUrl": gateway_url,
+        "inferenceModels": build_inference_models(provider),
+        "inferenceProvider": "gateway"
+    })
+}
+
+fn backup_config_library(dir: &Path) -> anyhow::Result<()> {
+    let meta = dir.join("_meta.json");
+    if !meta.exists() {
+        return Ok(());
+    }
+    crate::paths::ensure_helper_dirs()?;
+    let backup_dir = crate::paths::helper_backups_dir()?;
+    let stamp = super::chrono_like_timestamp();
+    let backup = backup_dir.join(format!("claude-desktop-gateway.{stamp}.bak"));
+    std::fs::create_dir_all(&backup)?;
+    backup_meta_tree(dir, &backup)?;
+    Ok(())
+}
+
+fn backup_meta_tree(src: &Path, dst: &Path) -> anyhow::Result<()> {
+    if !src.is_dir() {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let name = entry.file_name();
+        let target = dst.join(&name);
+        if file_type.is_dir() {
+            std::fs::create_dir_all(&target)?;
+            backup_meta_tree(&entry.path(), &target)?;
+        } else if file_type.is_file() {
+            std::fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
+fn cleanup_stale_gateway_profiles(dir: &Path, keep_id: &str) -> anyhow::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if name == "_meta.json" || !name.ends_with(".json") {
+            continue;
+        }
+        let id = name.trim_end_matches(".json");
+        if id != keep_id {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    Ok(())
+}
+
+fn normalize_gateway_url(url: &str) -> String {
+    url.trim_end_matches('/').to_string()
+}
+
+fn display_label_for_tier(provider: &ProviderConfig, tier: &str) -> String {
+    let models = crate::provider::models::popular_models(&provider.id);
+    if let Some(variant) = models.iter().find(|m| m.menu_tag == tier) {
+        return variant.slug.to_string();
+    }
+    if tier == "pro" {
+        if let Some(first) = models.first() {
+            return first.slug.to_string();
+        }
+    }
+    if let Some(last) = models.last() {
+        return last.slug.to_string();
+    }
+    provider.default_model.clone()
+}
+
+fn upstream_model_for_tier(provider: &ProviderConfig, tier: &str) -> String {
+    let models = crate::provider::models::popular_models(&provider.id);
+    if let Some(variant) = models.iter().find(|m| m.menu_tag == tier) {
+        return variant.api_model.to_string();
+    }
+    if tier == "pro" {
+        if let Some(first) = models.first() {
+            return first.api_model.to_string();
+        }
+    }
+    if let Some(last) = models.last() {
+        return last.api_model.to_string();
+    }
+    provider.upstream_model().to_string()
+}
+
+fn provider_supports_1m(provider: &ProviderConfig) -> bool {
+    crate::provider::models::popular_models(&provider.id)
+        .iter()
+        .any(|m| m.context_window >= 1_000_000)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gateway_config_id_follows_cc_switch_pattern() {
+        assert_eq!(
+            gateway_config_id(15721),
+            "00000000-0000-4000-8000-000000157210"
+        );
+        assert_eq!(
+            gateway_config_id(25573),
+            "00000000-0000-4000-8000-000000255730"
+        );
+    }
+
+    #[test]
+    fn detects_desktop_role_models() {
+        let body = br#"{"model":"claude-sonnet-4-6","messages":[]}"#;
+        assert!(request_uses_desktop_roles(body));
+        let body = br#"{"model":"deepseek-v4-flash","messages":[]}"#;
+        assert!(!request_uses_desktop_roles(body));
+    }
+
+    #[test]
+    fn maps_desktop_roles_to_upstream_models() {
+        let provider = ProviderConfig {
+            id: "deepseek".into(),
+            name: "DeepSeek".into(),
+            base_url: "https://api.deepseek.com/anthropic".into(),
+            api_key_env: "DEEPSEEK_API_KEY".into(),
+            default_model: "deepseek-v4-pro".into(),
+            api_model: "deepseek-v4-pro".into(),
+            wire_api: "anthropic".into(),
+        };
+        assert_eq!(
+            map_desktop_model(DESKTOP_ROLE_SONNET, &provider),
+            "deepseek-v4-flash"
+        );
+        assert_eq!(
+            map_desktop_model(DESKTOP_ROLE_OPUS, &provider),
+            "deepseek-v4-pro"
+        );
+    }
+}

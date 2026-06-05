@@ -1,0 +1,9 @@
+/target
+/dist
+/tmp
+/scripts/_*.ps1
+*.log
+.env
+.claude-code-helper/
+/assets/claude-code-helper.ico
+/assets/codex-helper.ico

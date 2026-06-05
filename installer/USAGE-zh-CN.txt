@@ -1,0 +1,37 @@
+Claude Code Helper — 让 Claude Code 使用 DeepSeek / 千问 / 智谱 / Kimi / MiniMax
+
+【环境要求】
+  · Windows 10 / 11（64 位）
+  · 已安装 Claude Code 桌面端，并能正常登录
+  · 各模型厂商的 API Key（DeepSeek、千问等官网申请）
+
+【绿色版 · 首次使用】
+  1. 解压本 zip 到任意目录（路径尽量不要含中文空格）
+  2. 双击 claude-code-helper.exe 启动（首次使用也可先执行：.\claude-code-helper.exe init）
+  3. 看任务栏托盘出现 Claude Code Helper 图标
+  4. 右键托盘 →「设置…」→ 选厂商、填 API Key → 保存
+  5. 完全退出并重新打开 Claude Code 桌面端
+
+【日常使用】
+  · 切换厂商：托盘 →「切换模型 · xxx」
+  · 切换具体型号：托盘 →「设置…」→ 热门模型
+  · 诊断问题：.\claude-code-helper.exe doctor
+  · 恢复 Anthropic 官方：托盘 → 更多 →「切换回 Anthropic 官方」
+
+【开机自启（可选）】
+  Win+R 输入 shell:startup，把 claude-code-helper.exe 的快捷方式放进去，
+  目标加上参数：start
+
+【配置位置】
+  · %USERPROFILE%\.claude-code-helper\     本工具配置与 Key
+  · %USERPROFILE%\.claude\settings.json    Claude Code 配置（工具会自动写入代理）
+
+【本地代理端口】
+  · 固定为 127.0.0.1:25573（Claude Code 访问 ANTHROPIC_BASE_URL=http://127.0.0.1:25573）
+  · 自检：浏览器打开 http://127.0.0.1:25573/health
+  · 若 Claude Code 连不上：先确认托盘在运行，再托盘 →「重新同步配置」
+
+【卸载绿色版】
+  托盘 → 退出；删除解压目录即可。配置在 .claude-code-helper 里，需手动删。
+
+版本见压缩包文件名。MIT 协议，非 Anthropic / DeepSeek 官方产品。

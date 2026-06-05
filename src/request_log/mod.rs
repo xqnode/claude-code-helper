@@ -273,8 +273,8 @@ fn pricing_per_million(provider_id: &str, model: &str) -> Option<(f64, f64)> {
         "minimax" => Some((1.0, 3.0)),
         "mimo" if model.contains("flash") => Some((0.3, 1.0)),
         "mimo" => Some((1.0, 3.0)),
-        "custom" if model.contains("mini") => Some((0.5, 1.5)),
-        "custom" if model.contains("5.5") || model.contains("5.4") => Some((2.0, 8.0)),
+        "custom" if model.contains("sonnet") => Some((0.8, 2.5)),
+        "custom" if model.contains("opus") => Some((2.0, 8.0)),
         _ => None,
     }
 }

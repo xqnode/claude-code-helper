@@ -212,14 +212,12 @@ pub fn is_desktop_role_model(model: &str) -> bool {
 }
 
 pub fn build_inference_models(provider: &ProviderConfig) -> Vec<Value> {
-    let flash = display_label_for_tier(provider, "flash");
-    let pro = display_label_for_tier(provider, "pro");
-    let sonnet = display_label_for_tier(provider, "flash");
+    let (haiku, pro, sonnet) = display_labels_for_desktop_roles(provider);
     let supports_1m = provider_supports_1m(provider);
 
     vec![
         json!({
-            "labelOverride": flash,
+            "labelOverride": haiku,
             "name": DESKTOP_ROLE_HAIKU
         }),
         json!({
@@ -346,6 +344,27 @@ fn display_label_for_tier(provider: &ProviderConfig, tier: &str) -> String {
     provider.default_model.clone()
 }
 
+/// Haiku / Sonnet 常映射到同一上游型号，给 Desktop 下拉菜单加角色后缀避免重复。
+fn display_labels_for_desktop_roles(provider: &ProviderConfig) -> (String, String, String) {
+    let haiku_base = display_label_for_tier(provider, "flash");
+    let sonnet_base = display_label_for_tier(provider, "flash");
+    let pro = display_label_for_tier(provider, "pro");
+
+    let shared_flash = haiku_base == sonnet_base;
+    let haiku = if shared_flash {
+        format!("{haiku_base} · Fast")
+    } else {
+        haiku_base
+    };
+    let sonnet = if shared_flash {
+        format!("{sonnet_base} · Default")
+    } else {
+        sonnet_base
+    };
+
+    (haiku, pro, sonnet)
+}
+
 fn upstream_model_for_tier(provider: &ProviderConfig, tier: &str) -> String {
     let models = crate::provider::models::popular_models(&provider.id);
     if let Some(variant) = models.iter().find(|m| m.menu_tag == tier) {
@@ -390,6 +409,23 @@ mod tests {
         assert!(request_uses_desktop_roles(body));
         let body = br#"{"model":"deepseek-v4-flash","messages":[]}"#;
         assert!(!request_uses_desktop_roles(body));
+    }
+
+    #[test]
+    fn distinct_labels_when_haiku_and_sonnet_share_flash_tier() {
+        let provider = ProviderConfig {
+            id: "deepseek".into(),
+            name: "DeepSeek".into(),
+            base_url: "https://api.deepseek.com/anthropic".into(),
+            api_key_env: "DEEPSEEK_API_KEY".into(),
+            default_model: "deepseek-v4-pro".into(),
+            api_model: "deepseek-v4-pro".into(),
+            wire_api: "anthropic".into(),
+        };
+        let models = build_inference_models(&provider);
+        assert_eq!(models[0]["labelOverride"], "deepseek-v4-flash · Fast");
+        assert_eq!(models[1]["labelOverride"], "deepseek-v4-pro");
+        assert_eq!(models[2]["labelOverride"], "deepseek-v4-flash · Default");
     }
 
     #[test]

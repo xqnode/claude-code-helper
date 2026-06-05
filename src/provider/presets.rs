@@ -61,9 +61,9 @@ pub fn builtin_presets() -> Vec<ProviderConfig> {
             name: "中转站".into(),
             base_url: String::new(),
             api_key_env: "CUSTOM_API_KEY".into(),
-            default_model: "gpt-5.5".into(),
-            api_model: "gpt-5.5".into(),
-            wire_api: "chat".into(),
+            default_model: "claude-opus-4-8".into(),
+            api_model: "claude-opus-4-8".into(),
+            wire_api: "anthropic".into(),
         },
     ]
 }

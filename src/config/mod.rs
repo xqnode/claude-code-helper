@@ -68,9 +68,9 @@ impl ProviderConfig {
             ("mimo", "mimo-v2.5-pro") => "MiMo V2.5 Pro".into(),
             ("mimo", "mimo-v2.5") => "MiMo V2.5".into(),
             ("mimo", "mimo-v2-flash") => "MiMo V2 Flash".into(),
-            ("custom", "gpt-5.5") => "GPT-5.5".into(),
-            ("custom", "gpt-5.4") => "GPT-5.4".into(),
-            ("custom", "gpt-5.4-mini") => "GPT-5.4 Mini".into(),
+            ("custom", "claude-opus-4-8") => "Claude Opus 4.8".into(),
+            ("custom", "claude-opus-4-7") => "Claude Opus 4.7".into(),
+            ("custom", "claude-sonnet-4-6") => "Claude Sonnet 4.6".into(),
             _ => self.name.clone(),
         }
     }

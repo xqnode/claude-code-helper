@@ -615,10 +615,10 @@
       input.value = p?.base_url || '';
       input.readOnly = !custom;
       input.classList.toggle('readonly', !custom);
-      input.placeholder = custom ? 'https://api.example.com/v1' : '';
+      input.placeholder = custom ? 'https://api.example.com' : '';
 
       hint.textContent = custom
-        ? '中转站 API 地址，末尾一般带 /v1'
+        ? '中转站 Anthropic API 根地址（Helper 会自动请求 /v1/messages）'
         : '官方地址（只读）';
     }
 

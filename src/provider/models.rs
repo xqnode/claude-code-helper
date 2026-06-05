@@ -16,7 +16,7 @@ pub fn popular_models(provider_id: &str) -> &'static [ModelVariant] {
         "kimi" => &KIMI_MODELS,
         "minimax" => &MINIMAX_MODELS,
         "mimo" => &MIMO_MODELS,
-        "custom" => &OPENAI_MODELS,
+        "custom" => &RELAY_CLAUDE_MODELS,
         _ => &[],
     }
 }
@@ -158,27 +158,27 @@ const MIMO_MODELS: &[ModelVariant] = &[
     },
 ];
 
-const OPENAI_MODELS: &[ModelVariant] = &[
+const RELAY_CLAUDE_MODELS: &[ModelVariant] = &[
     ModelVariant {
-        slug: "gpt-5.5",
-        display_name: "GPT-5.5（推荐）",
-        api_model: "gpt-5.5",
-        context_window: 256_000,
-        menu_tag: "5.5",
+        slug: "claude-opus-4-8",
+        display_name: "Claude Opus 4.8（旗舰）",
+        api_model: "claude-opus-4-8",
+        context_window: 200_000,
+        menu_tag: "opus-4.8",
     },
     ModelVariant {
-        slug: "gpt-5.4",
-        display_name: "GPT-5.4",
-        api_model: "gpt-5.4",
-        context_window: 256_000,
-        menu_tag: "5.4",
+        slug: "claude-opus-4-7",
+        display_name: "Claude Opus 4.7",
+        api_model: "claude-opus-4-7",
+        context_window: 200_000,
+        menu_tag: "opus-4.7",
     },
     ModelVariant {
-        slug: "gpt-5.4-mini",
-        display_name: "GPT-5.4 Mini",
-        api_model: "gpt-5.4-mini",
-        context_window: 128_000,
-        menu_tag: "4-mini",
+        slug: "claude-sonnet-4-6",
+        display_name: "Claude Sonnet 4.6",
+        api_model: "claude-sonnet-4-6",
+        context_window: 200_000,
+        menu_tag: "sonnet-4.6",
     },
 ];
 
@@ -208,7 +208,9 @@ fn migrate_legacy_model_slug(provider: &mut crate::config::ProviderConfig) {
         ("mimo", "mimo-v2-pro") => "mimo-v2.5-pro",
         ("mimo", "mimo-v2-omni") => "mimo-v2.5",
         ("mimo", slug) if slug.starts_with("mimo-v1") => "mimo-v2-flash",
-        ("custom", "gpt-4o") => "gpt-5.5",
+        ("custom", "gpt-5.5" | "gpt-4o") => "claude-opus-4-8",
+        ("custom", "gpt-5.4") => "claude-opus-4-7",
+        ("custom", "gpt-5.4-mini") => "claude-sonnet-4-6",
         _ => return,
     };
     provider.default_model = new_slug.to_string();
@@ -285,6 +287,15 @@ mod tests {
     }
 
     #[test]
+    fn relay_models_use_claude_ids() {
+        let models = popular_models("custom");
+        assert_eq!(models.len(), 3);
+        assert_eq!(models[0].slug, "claude-opus-4-8");
+        assert_eq!(models[1].slug, "claude-opus-4-7");
+        assert_eq!(models[2].slug, "claude-sonnet-4-6");
+    }
+
+    #[test]
     fn migrates_deprecated_and_legacy_slugs() {
         let cases = [
             ("deepseek", "deepseek-chat", "deepseek-v4-flash"),
@@ -293,6 +304,8 @@ mod tests {
             ("zhipu", "glm-4-flash", "glm-5.1"),
             ("kimi", "moonshot-v1-128k", "kimi-k2.6"),
             ("minimax", "minimax-m2.5", "minimax-m3"),
+            ("custom", "gpt-5.5", "claude-opus-4-8"),
+            ("custom", "gpt-5.4-mini", "claude-sonnet-4-6"),
         ];
 
         for (id, old, expected) in cases {

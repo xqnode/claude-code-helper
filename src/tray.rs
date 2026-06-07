@@ -247,6 +247,14 @@ fn handle_menu_click(ctx: &Arc<TrayContext>, id: &str) {
         let _ = ctx.loop_proxy.send_event(TrayUserEvent::CheckHealth);
         return;
     }
+    if id == "repair_claude_code" {
+        spawn_tray_task(ctx, async move |_w| {
+            if let Err(err) = actions::repair_claude_code_component().await {
+                tracing::error!("修复 Claude Code 组件失败: {err:#}");
+            }
+        });
+        return;
+    }
     if id == "restore_anthropic" {
         spawn_tray_task(ctx, async move |_w| {
             if let Err(err) = actions::restore_anthropic().await {
@@ -536,6 +544,12 @@ fn build_menu(app: &AppConfig, health: &ProviderHealth) -> anyhow::Result<Menu> 
     menu.append(&MenuItem::with_id(
         "check_health",
         "检测连接",
+        true,
+        None,
+    ))?;
+    menu.append(&MenuItem::with_id(
+        "repair_claude_code",
+        "修复 Claude Code 组件",
         true,
         None,
     ))?;

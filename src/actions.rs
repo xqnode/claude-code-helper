@@ -105,6 +105,10 @@ pub fn kill_claude_desktop() -> anyhow::Result<()> {
     Ok(())
 }
 
+pub async fn repair_claude_code_component() -> anyhow::Result<()> {
+    crate::claude::ccd_binary::repair_with_download().await
+}
+
 pub async fn kill_claude_and_reset_defaults() -> anyhow::Result<()> {
     kill_claude_desktop()?;
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;

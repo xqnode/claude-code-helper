@@ -48,12 +48,16 @@
 
 ### 第 1 步：下载安装
 
-| 类型 | 文件 | 操作 |
-|------|------|------|
-| **安装版** | `ClaudeCodeHelper-x.x.x-Setup.exe` | 双击 → 一路下一步 |
-| **便携版** | `ClaudeCodeHelper-x.x.x-win64.zip` | 解压后双击 `claude-code-helper.exe` |
+去 [GitHub Releases](https://github.com/xqnode/claude-code-helper/releases) 下载：
 
-> macOS / Linux 安装包尚未发布（托盘与设置窗口目前仅支持 Windows）。
+| 平台 | 类型 | 文件 | 操作 |
+|------|------|------|------|
+| **Windows** | 安装版 | `ClaudeCodeHelper-x.x.x-Setup.exe` | 双击 → 一路下一步 |
+| **Windows** | 便携版 | `ClaudeCodeHelper-x.x.x-win64.zip` | 解压后双击 `claude-code-helper.exe` |
+| **macOS** | DMG | `ClaudeCodeHelper-x.x.x-macos.dmg` | 拖入「应用程序」后打开 |
+| **macOS** | 便携版 | `ClaudeCodeHelper-x.x.x-macos.app.zip` | 解压后运行 `Claude Code Helper.app` |
+
+> macOS 当前以 CLI 代理模式运行（无菜单栏托盘）；Windows 支持完整托盘与设置窗口。
 
 ### 第 2 步：填 API Key
 
@@ -117,8 +121,14 @@ cargo test
 打包发布：
 
 ```powershell
-.\build-all.bat
+# Windows
+.\scripts\build-all.bat
+
+# macOS（在 Mac 上）
+./scripts/build-macos-release.sh
 ```
+
+推送 `v*` 标签可由 GitHub Actions 自动构建四端产物并发布，见 [RELEASE.md](RELEASE.md)。
 
 ---
 

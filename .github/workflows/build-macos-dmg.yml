@@ -1,0 +1,44 @@
+name: Build macOS DMG
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "icon_render.rs"
+      - "scripts/build-macos-release.sh"
+      - "installer/macos/**"
+      - ".github/workflows/build-macos-dmg.yml"
+
+jobs:
+  build-dmg:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build .app and DMG
+        run: |
+          chmod +x scripts/build-macos-release.sh
+          ./scripts/build-macos-release.sh
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeCodeHelper-macos-dmg
+          path: dist/*.dmg
+          if-no-files-found: error
+
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeCodeHelper-macos-app
+          path: dist/Claude Code Helper.app
+          if-no-files-found: error

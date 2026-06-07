@@ -21,9 +21,13 @@ use crate::config::{self, AppConfig};
 mod anthropic_to_chat;
 mod chat_to_anthropic;
 mod logged_stream;
-use anthropic_to_chat::convert_anthropic_to_chat;
+mod message_repair;
+mod reasoning_options;
+mod sse;
+mod upstream_retry;
+use anthropic_to_chat::{convert_anthropic_to_chat_with_options, ConvertOptions};
 use chat_to_anthropic::{
-    anthropic_stream_preamble, convert_chat_json_to_anthropic, wrap_chat_sse_as_anthropic_sse,
+    anthropic_stream_preamble, convert_chat_json_to_anthropic, AnthropicSseTranslator,
 };
 use logged_stream::LoggingByteStream;
 use crate::logs::{logs_bootstrap, logs_clear, logs_page};
@@ -40,16 +44,21 @@ type TrayHealthCheckHook = Arc<dyn Fn() + Send + Sync>;
 #[derive(Clone)]
 pub struct ProxyState {
     pub config: Arc<RwLock<AppConfig>>,
+    /// 非流式上游请求（总超时见 `DEFAULT_UPSTREAM_REQUEST_TIMEOUT_SECS`）。
     pub client: Client,
+    /// 流式上游请求（无总超时，读空闲超时见 `DEFAULT_UPSTREAM_STREAM_READ_IDLE_TIMEOUT_SECS`）。
+    pub streaming_client: Client,
     pub request_log: RequestLogStore,
     tray_health_check: Arc<StdRwLock<Option<TrayHealthCheckHook>>>,
 }
 
 pub fn spawn_server(config: AppConfig) -> anyhow::Result<Arc<ProxyState>> {
+    let (client, streaming_client) = config::build_proxy_upstream_clients()
+        .expect("failed to build upstream HTTP clients");
     let state = Arc::new(ProxyState {
         config: Arc::new(RwLock::new(config.clone())),
-        client: config::build_upstream_client(std::time::Duration::from_secs(300))
-            .expect("failed to build HTTP client"),
+        client,
+        streaming_client,
         request_log: RequestLogStore::new(),
         tray_health_check: Arc::new(StdRwLock::new(None)),
     });
@@ -107,9 +116,11 @@ pub fn request_tray_health_check(state: &ProxyState) {
 
 pub async fn start_server(config: AppConfig) -> anyhow::Result<()> {
     let addr = format!("{}:{}", config.proxy.host, config.proxy.port);
+    let (client, streaming_client) = config::build_proxy_upstream_clients()?;
     let state = ProxyState {
         config: Arc::new(RwLock::new(config.clone())),
-        client: config::build_upstream_client(std::time::Duration::from_secs(300))?,
+        client,
+        streaming_client,
         request_log: RequestLogStore::new(),
         tray_health_check: Arc::new(StdRwLock::new(None)),
     };
@@ -292,8 +303,16 @@ async fn proxy_messages_inner(
         return forward_anthropic_request(state, &provider, headers, body).await;
     }
 
+    let app_cfg = state.config.read().await;
     let upstream_model = extract_model_from_body(&body, provider.upstream_model());
-    match convert_anthropic_to_chat(&body, &upstream_model) {
+    let convert_options = ConvertOptions {
+        provider: Some(&provider),
+        model_reasoning_effort: &app_cfg.normalized_model_reasoning_effort(),
+        tool_output_max_chars: app_cfg.tool_output_max_chars,
+    };
+    drop(app_cfg);
+
+    match convert_anthropic_to_chat_with_options(&body, &upstream_model, convert_options) {
         Ok(chat_body) => {
             forward_chat_as_anthropic(state, &provider, headers, chat_body.into()).await
         }
@@ -391,15 +410,20 @@ async fn forward_anthropic_request_path(
         upstream_path.trim_start_matches('/')
     );
 
-    let mut request = state.client.request(method, &target);
-    request = request.header("x-api-key", &api_key);
-    request = request.header("anthropic-version", anthropic_version_header(&headers));
-    request = request.header("Content-Type", "application/json");
-    if !body.is_empty() {
-        request = request.body(body.to_vec());
-    }
-
-    forward_upstream_response(state, request, pending_base).await
+    let version = anthropic_version_header(&headers);
+    forward_upstream_with_retry(
+        state,
+        stream,
+        method,
+        &target,
+        body.to_vec(),
+        UpstreamAuth::Anthropic {
+            api_key,
+            version,
+        },
+        pending_base,
+    )
+    .await
 }
 
 async fn forward_chat_as_anthropic(
@@ -436,81 +460,156 @@ async fn forward_chat_as_anthropic(
         provider.base_url.trim_end_matches('/')
     );
 
-    let mut request = state.client.request(Method::POST, &target);
-    request = request.header("Authorization", format!("Bearer {api_key}"));
-    request = request.header("Content-Type", "application/json");
-    request = request.body(body.to_vec());
-
-    let response = forward_upstream_response(state, request, pending_base).await;
+    let response = forward_upstream_with_retry(
+        state,
+        stream,
+        Method::POST,
+        &target,
+        body.to_vec(),
+        UpstreamAuth::Bearer(api_key),
+        pending_base,
+    )
+    .await;
     convert_chat_response_to_anthropic(response, &model).await
 }
 
-async fn forward_upstream_response(
+enum UpstreamAuth {
+    Anthropic { api_key: String, version: String },
+    Bearer(String),
+}
+
+async fn forward_upstream_with_retry(
     state: &ProxyState,
-    request: reqwest::RequestBuilder,
+    stream_request: bool,
+    method: Method,
+    target: &str,
+    body: Vec<u8>,
+    auth: UpstreamAuth,
     pending_base: PendingRequest,
 ) -> Response {
-    match request.send().await {
-        Ok(resp) => {
-            let status = resp.status();
-            let mut pending = pending_base;
-            pending.status = status.as_u16();
-            let mut response_headers = HeaderMap::new();
-            let mut is_sse = false;
-            for (name, value) in resp.headers() {
-                if name == reqwest::header::TRANSFER_ENCODING {
+    let upstream_client = if stream_request {
+        &state.streaming_client
+    } else {
+        &state.client
+    };
+
+    for attempt in 0..upstream_retry::MAX_UPSTREAM_ATTEMPTS {
+        let mut request = upstream_client.request(method.clone(), target);
+        request = request.header("Content-Type", "application/json");
+        match &auth {
+            UpstreamAuth::Anthropic { api_key, version } => {
+                request = request.header("x-api-key", api_key);
+                request = request.header("anthropic-version", version);
+            }
+            UpstreamAuth::Bearer(api_key) => {
+                request = request.header("Authorization", format!("Bearer {api_key}"));
+            }
+        }
+        if !body.is_empty() {
+            request = request.body(body.clone());
+        }
+
+        match request.send().await {
+            Ok(resp) => {
+                if upstream_retry::is_retryable_upstream_status(resp.status())
+                    && attempt + 1 < upstream_retry::MAX_UPSTREAM_ATTEMPTS
+                {
+                    let delay =
+                        upstream_retry::retry_delay_from_headers(resp.headers(), attempt);
+                    warn!(
+                        "上游返回 {}，{:?} 后重试 ({}/{})",
+                        resp.status(),
+                        delay,
+                        attempt + 2,
+                        upstream_retry::MAX_UPSTREAM_ATTEMPTS
+                    );
+                    tokio::time::sleep(delay).await;
                     continue;
                 }
-                if name == reqwest::header::CONTENT_TYPE {
-                    if let Ok(v) = value.to_str() {
-                        if v.to_ascii_lowercase().contains("text/event-stream") {
-                            is_sse = true;
-                        }
-                    }
-                }
-                if let Ok(v) = HeaderValue::from_bytes(value.as_bytes()) {
-                    response_headers.insert(name, v);
-                }
+                return finish_upstream_response(resp, pending_base, state).await;
             }
+            Err(err) => {
+                if upstream_retry::is_retryable_upstream_error(&err)
+                    && attempt + 1 < upstream_retry::MAX_UPSTREAM_ATTEMPTS
+                {
+                    let delay = upstream_retry::retry_backoff(attempt);
+                    warn!(
+                        "上游连接失败，{:?} 后重试 ({}/{}): {target} -> {err}",
+                        delay,
+                        attempt + 2,
+                        upstream_retry::MAX_UPSTREAM_ATTEMPTS
+                    );
+                    tokio::time::sleep(delay).await;
+                    continue;
+                }
 
-            if is_sse {
-                pending.stream = true;
-                response_headers.remove(reqwest::header::CONTENT_LENGTH);
-                let stream = LoggingByteStream::new(
-                    resp.bytes_stream(),
-                    pending,
-                    state.request_log.clone(),
-                );
-                let body = Body::from_stream(stream);
-                (status, response_headers, body).into_response()
-            } else {
-                let bytes = resp.bytes().await.unwrap_or_default();
-                let usage = serde_json::from_slice::<serde_json::Value>(&bytes)
-                    .ok()
-                    .and_then(|value| parse_usage_from_json(&value));
-                let entry = state.request_log.finalize(pending, usage);
+                warn!("上游请求失败: {target} -> {err}");
+                let mut pending = pending_base;
+                pending.status = StatusCode::BAD_GATEWAY.as_u16();
+                let entry = state.request_log.finalize(pending, None);
                 state.request_log.push(entry).await;
-                (status, response_headers, Body::from(bytes)).into_response()
+                return (
+                    StatusCode::BAD_GATEWAY,
+                    Json(serde_json::json!({
+                        "type": "error",
+                        "error": {
+                            "type": "api_error",
+                            "message": format!("上游请求失败: {err}")
+                        }
+                    })),
+                )
+                    .into_response();
             }
         }
-        Err(err) => {
-            warn!("上游请求失败: {err}");
-            let mut pending = pending_base;
-            pending.status = StatusCode::BAD_GATEWAY.as_u16();
-            let entry = state.request_log.finalize(pending, None);
-            state.request_log.push(entry).await;
-            (
-                StatusCode::BAD_GATEWAY,
-                Json(serde_json::json!({
-                    "type": "error",
-                    "error": {
-                        "type": "api_error",
-                        "message": format!("上游请求失败: {err}")
-                    }
-                })),
-            )
-                .into_response()
+    }
+
+    unreachable!("upstream retry loop must return inside");
+}
+
+async fn finish_upstream_response(
+    resp: reqwest::Response,
+    pending_base: PendingRequest,
+    state: &ProxyState,
+) -> Response {
+    let status = resp.status();
+    let mut pending = pending_base;
+    pending.status = status.as_u16();
+    let mut response_headers = HeaderMap::new();
+    let mut is_sse = false;
+    for (name, value) in resp.headers() {
+        if name == reqwest::header::TRANSFER_ENCODING {
+            continue;
         }
+        if name == reqwest::header::CONTENT_TYPE {
+            if let Ok(v) = value.to_str() {
+                if v.to_ascii_lowercase().contains("text/event-stream") {
+                    is_sse = true;
+                }
+            }
+        }
+        if let Ok(v) = HeaderValue::from_bytes(value.as_bytes()) {
+            response_headers.insert(name, v);
+        }
+    }
+
+    if is_sse {
+        pending.stream = true;
+        response_headers.remove(reqwest::header::CONTENT_LENGTH);
+        let stream = LoggingByteStream::new(
+            resp.bytes_stream(),
+            pending,
+            state.request_log.clone(),
+        );
+        let body = Body::from_stream(stream);
+        (status, response_headers, body).into_response()
+    } else {
+        let bytes = resp.bytes().await.unwrap_or_default();
+        let usage = serde_json::from_slice::<serde_json::Value>(&bytes)
+            .ok()
+            .and_then(|value| parse_usage_from_json(&value));
+        let entry = state.request_log.finalize(pending, usage);
+        state.request_log.push(entry).await;
+        (status, response_headers, Body::from(bytes)).into_response()
     }
 }
 
@@ -560,14 +659,23 @@ async fn convert_chat_response_to_anthropic(response: Response, model: &str) -> 
         let translated = stream! {
             yield Ok::<_, std::io::Error>(axum::body::Bytes::from(preamble));
             let mut buffer = String::new();
+            let mut utf8_remainder = Vec::new();
+            let mut translator = AnthropicSseTranslator::new(&message_id);
             futures_util::pin_mut!(upstream_stream);
             while let Some(chunk) = upstream_stream.try_next().await? {
-                buffer.push_str(&String::from_utf8_lossy(&chunk));
-                while let Some(pos) = buffer.find("\n\n") {
-                    let event = buffer.drain(..pos + 2).collect::<String>();
-                    if let Some(converted) = wrap_chat_sse_as_anthropic_sse(&event, &message_id) {
+                sse::append_utf8_safe(&mut buffer, &mut utf8_remainder, &chunk);
+                while let Some(block) = sse::take_sse_block(&mut buffer) {
+                    let converted = translator.convert_event(&format!("{block}\n\n")).join("");
+                    if !converted.is_empty() {
                         yield Ok(axum::body::Bytes::from(converted));
                     }
+                }
+            }
+            sse::flush_utf8_remainder(&mut buffer, &mut utf8_remainder);
+            if !buffer.trim().is_empty() {
+                let converted = translator.convert_event(&format!("{}\n\n", buffer.trim())).join("");
+                if !converted.is_empty() {
+                    yield Ok(axum::body::Bytes::from(converted));
                 }
             }
         };
@@ -633,4 +741,224 @@ fn anthropic_version_header(headers: &HeaderMap) -> String {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("2023-06-01")
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::ProviderConfig;
+    use serde_json::Value;
+
+    fn deepseek_provider() -> ProviderConfig {
+        ProviderConfig {
+            id: "deepseek".into(),
+            name: "DeepSeek".into(),
+            base_url: "https://api.deepseek.com/v1".into(),
+            api_key_env: "DEEPSEEK_API_KEY".into(),
+            default_model: "deepseek-v4-pro".into(),
+            api_model: "deepseek-v4-pro".into(),
+            wire_api: "chat".into(),
+        }
+    }
+
+    fn qwen_provider() -> ProviderConfig {
+        ProviderConfig {
+            id: "qwen".into(),
+            name: "千问".into(),
+            base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".into(),
+            api_key_env: "DASHSCOPE_API_KEY".into(),
+            default_model: "qwen3.7-max".into(),
+            api_model: "qwen3.7-max".into(),
+            wire_api: "chat".into(),
+        }
+    }
+
+    fn convert_anthropic(body: &[u8], provider: &ProviderConfig, tool_output_max_chars: usize) -> Value {
+        let out = convert_anthropic_to_chat_with_options(
+            body,
+            provider.upstream_model(),
+            ConvertOptions {
+                provider: Some(provider),
+                model_reasoning_effort: "medium",
+                tool_output_max_chars,
+            },
+        )
+        .unwrap();
+        serde_json::from_slice(&out).unwrap()
+    }
+
+    #[test]
+    fn injects_reasoning_placeholder_only_for_thinking_providers() {
+        let body = br#"{"model":"deepseek-v4-pro","messages":[
+            {"role":"user","content":"run"},
+            {"role":"assistant","content":[{"type":"tool_use","id":"call_1","name":"a","input":{}}]},
+            {"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":"ok"}]}
+        ]}"#;
+        let deepseek = convert_anthropic(body, &deepseek_provider(), 0);
+        let qwen = convert_anthropic(body, &qwen_provider(), 0);
+        let assistant = deepseek["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m.get("role") == Some(&Value::String("assistant".into())))
+            .unwrap();
+        assert_eq!(assistant["reasoning_content"], "tool call");
+        let qwen_assistant = qwen["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m.get("role") == Some(&Value::String("assistant".into())))
+            .unwrap();
+        assert!(qwen_assistant.get("reasoning_content").is_none());
+    }
+
+    #[test]
+    fn backfill_inherits_reasoning_from_earlier_assistant_message() {
+        let body = br#"{"model":"deepseek-v4-pro","messages":[
+            {"role":"assistant","content":[{"type":"thinking","thinking":"Plan the patch."},{"type":"text","text":"go"}]},
+            {"role":"user","content":"apply"},
+            {"role":"assistant","content":[{"type":"tool_use","id":"call_1","name":"apply_patch","input":{}}]},
+            {"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":"ok"}]}
+        ]}"#;
+        let chat = convert_anthropic(body, &deepseek_provider(), 0);
+        let msgs = chat["messages"].as_array().unwrap();
+        let tool_assistant = msgs
+            .iter()
+            .filter(|m| m.get("role") == Some(&Value::String("assistant".into())))
+            .nth(1)
+            .unwrap();
+        assert_eq!(tool_assistant["reasoning_content"], "Plan the patch.");
+    }
+
+    #[test]
+    fn leaves_tool_output_intact_when_truncation_disabled() {
+        let long_output = "a".repeat(500);
+        let body = format!(
+            r#"{{
+            "model": "deepseek-v4-pro",
+            "messages": [
+                {{"role": "assistant", "content": [{{"type": "tool_use", "id": "call_1", "name": "grep", "input": {{}}}}]}},
+                {{"role": "user", "content": [{{"type": "tool_result", "tool_use_id": "call_1", "content": {}}}]}}
+            ]
+        }}"#,
+            serde_json::to_string(&long_output).unwrap()
+        );
+        let chat = convert_anthropic(body.as_bytes(), &deepseek_provider(), 0);
+        let tool = chat["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m.get("role") == Some(&Value::String("tool".into())))
+            .unwrap();
+        assert_eq!(tool["content"], long_output);
+    }
+
+    #[test]
+    fn backfills_tool_responses_when_assistant_tool_calls_trail_history() {
+        let body = br#"{"model":"qwen3.7-max","messages":[
+            {"role":"user","content":"run tools"},
+            {"role":"assistant","content":[{"type":"tool_use","id":"call_1","name":"a","input":{}},{"type":"tool_use","id":"call_2","name":"b","input":{}}]}
+        ]}"#;
+        let chat = convert_anthropic(body, &qwen_provider(), 0);
+        let msgs = chat["messages"].as_array().unwrap();
+        assert_eq!(msgs.len(), 4);
+        assert_eq!(msgs[2]["tool_call_id"], "call_1");
+        assert_eq!(msgs[3]["tool_call_id"], "call_2");
+    }
+
+    #[test]
+    fn injects_stream_options_include_usage_for_streaming_requests() {
+        let body = br#"{"model":"qwen3.7-max","stream":true,"messages":[{"role":"user","content":"hi"}]}"#;
+        let chat = convert_anthropic(body, &qwen_provider(), 0);
+        assert_eq!(chat["stream_options"]["include_usage"], true);
+    }
+
+    #[test]
+    fn strips_tool_choice_when_tools_are_absent() {
+        let body = br#"{
+            "model": "qwen3.7-max",
+            "stream": false,
+            "tool_choice": {"type": "auto"},
+            "messages": [{"role": "user", "content": "hi"}]
+        }"#;
+        let chat = convert_anthropic(body, &qwen_provider(), 0);
+        assert!(chat.get("tool_choice").is_none());
+        assert!(chat.get("parallel_tool_calls").is_none());
+    }
+
+    #[test]
+    fn maps_default_reasoning_effort_for_deepseek_at_transform_stage() {
+        let body = br#"{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"hi"}]}"#;
+        let chat = convert_anthropic(body, &deepseek_provider(), 0);
+        assert_eq!(chat["reasoning_effort"], "high");
+        assert_eq!(chat["thinking"]["type"], "enabled");
+        assert!(chat.get("reasoning").is_none());
+    }
+
+    #[test]
+    fn multi_round_tool_conversation_stays_valid_for_upstream() {
+        let body = br#"{
+            "model": "deepseek-v4-pro",
+            "messages": [
+                {"role":"user","content":"scan project"},
+                {"role":"assistant","content":[
+                    {"type":"thinking","thinking":"Need README first."},
+                    {"type":"tool_use","id":"call_1","name":"read_file","input":{"path":"README.md"}}
+                ]},
+                {"role":"user","content":[
+                    {"type":"tool_result","tool_use_id":"call_1","content":[{"type":"text","text":"README title"}]}
+                ]},
+                {"role":"assistant","content":[
+                    {"type":"tool_use","id":"call_2","name":"grep","input":{"pattern":"todo"}}
+                ]},
+                {"role":"user","content":[
+                    {"type":"tool_result","tool_use_id":"call_2","content":[{"type":"text","text":"src/main.rs:1"}]}
+                ]},
+                {"role":"user","content":"summarize"},
+                {"role":"assistant","content":[{"type":"text","text":"Done."}]}
+            ]
+        }"#;
+        let chat = convert_anthropic(body, &deepseek_provider(), 0);
+        let msgs = chat["messages"].as_array().unwrap();
+
+        assert_eq!(msgs[0]["role"], "user");
+        assert_eq!(msgs[1]["reasoning_content"], "Need README first.");
+        assert_eq!(msgs[1]["tool_calls"][0]["function"]["name"], "read_file");
+        assert_eq!(msgs[2]["role"], "tool");
+        assert_eq!(msgs[2]["tool_call_id"], "call_1");
+        assert_eq!(msgs[2]["content"], "README title");
+        assert_eq!(msgs[3]["tool_calls"][0]["function"]["name"], "grep");
+        assert_eq!(msgs[3]["reasoning_content"], "tool call");
+        assert_eq!(msgs[4]["tool_call_id"], "call_2");
+        assert_eq!(msgs[5]["role"], "user");
+        assert_eq!(msgs[6]["content"], "Done.");
+    }
+
+    #[test]
+    fn multi_round_tool_conversation_truncates_long_output_when_enabled() {
+        let long_output = "HEAD".to_string() + &"x".repeat(200) + "TAIL";
+        let body = format!(
+            r#"{{
+            "model": "deepseek-v4-pro",
+            "messages": [
+                {{"role":"user","content":"run"}},
+                {{"role":"assistant","content":[{{"type":"tool_use","id":"call_1","name":"grep","input":{{}}}}]}},
+                {{"role":"user","content":[{{"type":"tool_result","tool_use_id":"call_1","content":{}}}]}}
+            ]
+        }}"#,
+            serde_json::to_string(&long_output).unwrap()
+        );
+        let chat = convert_anthropic(body.as_bytes(), &deepseek_provider(), 80);
+        let tool = chat["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m.get("role") == Some(&Value::String("tool".into())))
+            .unwrap();
+        let content = tool["content"].as_str().unwrap();
+        assert!(content.contains("HEAD"));
+        assert!(content.contains("TAIL"));
+        assert!(content.contains("truncated"));
+        assert!(content.chars().count() < long_output.chars().count());
+    }
 }

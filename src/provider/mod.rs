@@ -1,3 +1,4 @@
+pub mod chat_reasoning;
 pub mod models;
 pub mod presets;
 

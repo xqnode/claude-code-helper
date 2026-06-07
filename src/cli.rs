@@ -42,6 +42,8 @@ pub enum Commands {
     },
     /// 恢复 Anthropic 官方配置
     RestoreAnthropic,
+    /// 修复 Claude Desktop 缺失的 Claude Code 组件（claude.exe）
+    RepairClaudeCode,
 }
 
 #[derive(Subcommand, Debug)]

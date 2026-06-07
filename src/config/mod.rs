@@ -10,6 +10,18 @@ pub const DUMMY_ENV_KEY: &str = "CLAUDE_CODE_HELPER_DUMMY_KEY";
 pub const DEFAULT_HOST: &str = "127.0.0.1";
 /// 本地代理固定端口；Claude Code 通过 ANTHROPIC_BASE_URL=http://127.0.0.1:25573 访问 Helper。
 pub const DEFAULT_PORT: u16 = 25573;
+pub const DEFAULT_MODEL_REASONING_EFFORT: &str = "medium";
+/// 上游 tool 消息内容最大字符数；0 表示不截断（默认，优先稳定性）。
+pub const DEFAULT_TOOL_OUTPUT_MAX_CHARS: usize = 0;
+/// 上游连接阶段超时（秒）。
+pub const DEFAULT_UPSTREAM_CONNECT_TIMEOUT_SECS: u64 = 30;
+/// 流式响应读空闲超时：连续这么久没有新 chunk 则断开（秒）。
+pub const DEFAULT_UPSTREAM_STREAM_READ_IDLE_TIMEOUT_SECS: u64 = 600;
+/// 非流式请求总超时（秒）；仅用于一次性等待完整响应。
+pub const DEFAULT_UPSTREAM_REQUEST_TIMEOUT_SECS: u64 = 600;
+
+const VALID_MODEL_REASONING_EFFORTS: &[&str] =
+    &["none", "minimal", "low", "medium", "high", "xhigh"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProxyConfig {
@@ -76,11 +88,25 @@ impl ProviderConfig {
     }
 }
 
+fn default_model_reasoning_effort() -> String {
+    DEFAULT_MODEL_REASONING_EFFORT.to_string()
+}
+
+fn default_tool_output_max_chars() -> usize {
+    DEFAULT_TOOL_OUTPUT_MAX_CHARS
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub proxy: ProxyConfig,
     pub active: String,
     pub providers: HashMap<String, ProviderConfig>,
+    /// 默认推理档位，映射为各厂商 Chat API 的 thinking / reasoning 参数。
+    #[serde(default = "default_model_reasoning_effort")]
+    pub model_reasoning_effort: String,
+    /// 发往上游前截断超长 `role: tool` 文本（head+tail）；0 = 关闭。
+    #[serde(default = "default_tool_output_max_chars")]
+    pub tool_output_max_chars: usize,
 }
 
 impl Default for AppConfig {
@@ -93,7 +119,18 @@ impl Default for AppConfig {
             proxy: ProxyConfig::default(),
             active: "deepseek".to_string(),
             providers,
+            model_reasoning_effort: default_model_reasoning_effort(),
+            tool_output_max_chars: default_tool_output_max_chars(),
         }
+    }
+}
+
+pub fn normalize_model_reasoning_effort(value: &str) -> String {
+    let effort = value.trim().to_ascii_lowercase();
+    if VALID_MODEL_REASONING_EFFORTS.contains(&effort.as_str()) {
+        effort
+    } else {
+        DEFAULT_MODEL_REASONING_EFFORT.to_string()
     }
 }
 
@@ -136,6 +173,10 @@ impl AppConfig {
             .ok_or_else(|| anyhow::anyhow!("未找到当前模型预设: {}", self.active))
     }
 
+    pub fn normalized_model_reasoning_effort(&self) -> String {
+        normalize_model_reasoning_effort(&self.model_reasoning_effort)
+    }
+
     /// Claude Code 的 ANTHROPIC_BASE_URL 不带 /v1 后缀。
     pub fn proxy_base_url(&self) -> String {
         format!("http://{}:{}", self.proxy.host, self.proxy.port)
@@ -160,9 +201,36 @@ pub fn validate_base_url(url: &str) -> anyhow::Result<String> {
 pub fn build_upstream_client(timeout: std::time::Duration) -> anyhow::Result<reqwest::Client> {
     reqwest::Client::builder()
         .no_proxy()
+        .connect_timeout(std::time::Duration::from_secs(
+            DEFAULT_UPSTREAM_CONNECT_TIMEOUT_SECS,
+        ))
         .timeout(timeout)
         .build()
         .map_err(Into::into)
+}
+
+/// 流式上游客户端：不设总超时，靠读空闲超时检测僵死连接。
+pub fn build_upstream_streaming_client() -> anyhow::Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .no_proxy()
+        .connect_timeout(std::time::Duration::from_secs(
+            DEFAULT_UPSTREAM_CONNECT_TIMEOUT_SECS,
+        ))
+        .read_timeout(std::time::Duration::from_secs(
+            DEFAULT_UPSTREAM_STREAM_READ_IDLE_TIMEOUT_SECS,
+        ))
+        .tcp_keepalive(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(Into::into)
+}
+
+pub fn build_proxy_upstream_clients() -> anyhow::Result<(reqwest::Client, reqwest::Client)> {
+    let request_timeout =
+        std::time::Duration::from_secs(DEFAULT_UPSTREAM_REQUEST_TIMEOUT_SECS);
+    Ok((
+        build_upstream_client(request_timeout)?,
+        build_upstream_streaming_client()?,
+    ))
 }
 
 pub fn write_atomic(path: &std::path::Path, content: &str) -> anyhow::Result<()> {
@@ -229,6 +297,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn default_tool_output_max_chars_is_disabled() {
+        assert_eq!(
+            AppConfig::default().tool_output_max_chars,
+            DEFAULT_TOOL_OUTPUT_MAX_CHARS
+        );
+    }
+
+    #[test]
+    fn proxy_upstream_clients_build_successfully() {
+        let (regular, streaming) = build_proxy_upstream_clients().unwrap();
+        let _ = regular;
+        let _ = streaming;
+    }
+
+    #[test]
     fn default_proxy_uses_fixed_port() {
         let config = ProxyConfig::default();
         assert_eq!(config.host, DEFAULT_HOST);
@@ -236,6 +319,29 @@ mod tests {
         assert_eq!(
             AppConfig::default().proxy_base_url(),
             format!("http://{DEFAULT_HOST}:{DEFAULT_PORT}")
+        );
+    }
+
+    #[test]
+    fn default_model_reasoning_effort_is_medium() {
+        assert_eq!(
+            AppConfig::default().model_reasoning_effort,
+            DEFAULT_MODEL_REASONING_EFFORT
+        );
+    }
+
+    #[test]
+    fn normalize_model_reasoning_effort_falls_back_to_medium() {
+        assert_eq!(normalize_model_reasoning_effort("HIGH"), "high");
+        assert_eq!(normalize_model_reasoning_effort("bogus"), "medium");
+    }
+
+    #[test]
+    fn default_upstream_timeout_constants_are_sane() {
+        assert!(DEFAULT_UPSTREAM_CONNECT_TIMEOUT_SECS > 0);
+        assert!(DEFAULT_UPSTREAM_STREAM_READ_IDLE_TIMEOUT_SECS > 0);
+        assert!(
+            DEFAULT_UPSTREAM_REQUEST_TIMEOUT_SECS >= DEFAULT_UPSTREAM_STREAM_READ_IDLE_TIMEOUT_SECS
         );
     }
 }

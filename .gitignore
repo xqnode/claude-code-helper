@@ -6,4 +6,5 @@
 .env
 .claude-code-helper/
 /assets/claude-code-helper.ico
+/assets/claude-code-helper.png
 /assets/codex-helper.ico

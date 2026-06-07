@@ -1,8 +1,8 @@
 [package]
 name = "claude-code-helper"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "轻量 Windows 托盘代理，让 Claude Code 桌面端一键切换 DeepSeek、通义千问等国产大模型"
+description = "Windows / macOS 轻量托盘·菜单栏代理，让 Claude Code 桌面端一键切换 DeepSeek、通义千问等国产大模型"
 license = "MIT"
 
 [[bin]]
@@ -30,6 +30,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
 
 [build-dependencies]
+png = "0.17"
+
+[target.'cfg(windows)'.build-dependencies]
 ico = "0.3"
 winres = "0.1"
 

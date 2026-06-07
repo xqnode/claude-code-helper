@@ -49,7 +49,7 @@ cargo run -- start --no-tray
 ```powershell
 cargo build --release
 # 产物：target\release\claude-code-helper.exe
-.\build-all.bat
+.\scripts\build-all.bat
 ```
 
 ## 配置路径

@@ -61,17 +61,24 @@ fn read_windows_user_env(key: &str) -> Option<String> {
     if !output.status.success() {
         return None;
     }
-    let text = String::from_utf8_lossy(&output.stdout);
-    text.lines()
-        .find_map(|line| {
-            let line = line.trim();
-            if line.starts_with(key) {
-                line.split_whitespace().last().map(str::to_string)
-            } else {
-                None
-            }
-        })
-        .filter(|v| !v.trim().is_empty())
+    parse_reg_query_value(&String::from_utf8_lossy(&output.stdout), key)
+}
+
+#[cfg(windows)]
+pub(crate) fn parse_reg_query_value(text: &str, key: &str) -> Option<String> {
+    for line in text.lines() {
+        let line = line.trim();
+        if !line.starts_with(key) {
+            continue;
+        }
+        let rest = line.strip_prefix(key)?.trim();
+        let rest = rest.strip_prefix("REG_SZ").unwrap_or(rest).trim();
+        if !rest.is_empty() {
+            return Some(rest.to_string());
+        }
+        return line.split_whitespace().last().map(str::to_string);
+    }
+    None
 }
 
 #[cfg(not(windows))]
@@ -80,4 +87,27 @@ pub fn windows_user_env_is_set(key: &str) -> bool {
         .ok()
         .filter(|v| !v.trim().is_empty())
         .is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(windows)]
+    use super::parse_reg_query_value;
+
+    #[cfg(windows)]
+    #[test]
+    fn parse_reg_query_value_reads_reg_sz_payload() {
+        let text = "HKEY_CURRENT_USER\\Environment\r\n    ANTHROPIC_API_KEY    REG_SZ    sk-test-token\r\n";
+        assert_eq!(
+            parse_reg_query_value(text, "ANTHROPIC_API_KEY").as_deref(),
+            Some("sk-test-token")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn parse_reg_query_value_returns_none_for_missing_key() {
+        let text = "HKEY_CURRENT_USER\\Environment\r\n    OTHER_KEY    REG_SZ    value\r\n";
+        assert!(parse_reg_query_value(text, "ANTHROPIC_API_KEY").is_none());
+    }
 }

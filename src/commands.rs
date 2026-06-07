@@ -20,6 +20,7 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::Settings => cmd_settings().await,
         Commands::Env { action } => cmd_env(action),
         Commands::RestoreAnthropic => cmd_restore_anthropic(),
+        Commands::RepairClaudeCode => cmd_repair_claude_code().await,
     }
 }
 
@@ -345,6 +346,28 @@ async fn cmd_doctor() -> anyhow::Result<()> {
         }
     }
 
+    match claude::ccd_binary::status() {
+        Ok(claude::ccd_binary::CcdBinaryStatus::Ready { version, path }) => {
+            println!("✅ Claude Code 组件已就绪 ({version})");
+            println!("   {}", path.display());
+        }
+        Ok(claude::ccd_binary::CcdBinaryStatus::Missing {
+            expected_version,
+            root,
+        }) => {
+            println!("❌ Claude Code 组件未就绪（Desktop 会报 binary not available）");
+            if let Some(version) = expected_version {
+                println!("   需要版本: {version}");
+            }
+            println!("   目录: {}", root.display());
+            println!("   修复: claude-code-helper repair-claude-code");
+            ok = false;
+        }
+        Err(err) => {
+            println!("⚠️  无法检测 Claude Code 组件: {err:#}");
+        }
+    }
+
     if ok {
         println!();
         println!("一切正常，可以运行 Claude Code 了。");
@@ -371,4 +394,8 @@ fn cmd_restore_anthropic() -> anyhow::Result<()> {
     println!("✅ 已恢复 Anthropic 官方 Claude Code 配置，并退出 Claude 桌面端");
     println!("   请重新打开 Claude 桌面端");
     Ok(())
+}
+
+async fn cmd_repair_claude_code() -> anyhow::Result<()> {
+    claude::ccd_binary::repair_with_download().await
 }

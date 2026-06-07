@@ -3,13 +3,13 @@
 ; 或运行仓库根目录 build-installer.bat
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.0"
+  #define MyAppVersion "0.2.0"
 #endif
 
 #define MyAppName "Claude Code Helper"
 #define MyAppPublisher "Claude Code Helper"
 #define MyAppExeName "claude-code-helper.exe"
-#define MyAppURL "https://github.com/yourname/claude-code-helper"
+#define MyAppURL "https://github.com/xqnode/claude-code-helper"
 
 [Setup]
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}}

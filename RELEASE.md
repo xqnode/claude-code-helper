@@ -2,47 +2,118 @@
 
 ## 当前版本
 
-**v0.1.0**（2026-06-05）
+**v0.2.0**（2026-06-07）
+
+---
+
+## 推荐：GitHub Actions 自动发版（Windows + macOS）
+
+推送 **`v*`** 标签后，[`.github/workflows/release.yml`](.github/workflows/release.yml) 会自动：
+
+| Runner | 产物 |
+|--------|------|
+| `windows-latest` | `ClaudeCodeHelper-{version}-win64.zip`、`ClaudeCodeHelper-{version}-Setup.exe` |
+| `macos-latest` | `ClaudeCodeHelper-{version}-macos.app.zip`、`ClaudeCodeHelper-{version}-macos.dmg`（Universal arm64 + x86_64） |
+
+Release 说明从 `CHANGELOG.md` 对应版本段落自动提取。
+
+### 发版步骤（Actions）
+
+```powershell
+# 1. 本地改版本与 CHANGELOG，commit 并 push main
+#    Cargo.toml / CHANGELOG.md / installer 版本号
+
+git push origin main
+
+# 2. 打 tag 并推送 —— 触发 CI
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+在 GitHub → **Actions** → **Release** 查看进度；完成后 Release 页会自动出现全部产物。
+
+> **注意**：Actions 发版**不需要**本地构建 macOS 产物。  
+> macOS DMG 为 ad-hoc 签名，**未公证**；Gatekeeper 可能拦截，用户需右键打开或 `xattr -cr`（见 README）。
+
+### 手动重跑某 tag
+
+GitHub → Actions → Release → **Run workflow** → 填写已有 tag（如 `v0.2.0`）。
+
+---
+
+## 本地构建
+
+### Windows
+
+```powershell
+# 仅 ZIP（便携版）
+.\scripts\build-zip.bat
+
+# ZIP + Inno Setup 安装包（需 Inno Setup 6）
+.\scripts\build-all.bat
+```
+
+产物输出到 `dist/`（已在 `.gitignore`，不提交仓库）。
+
+### macOS
+
+```bash
+chmod +x scripts/build-macos-release.sh
+./scripts/build-macos-release.sh
+# 产物：dist/Claude Code Helper.app、dist/ClaudeCodeHelper-x.y.z-macos.dmg
+# 本机快速测试：NATIVE_ONLY=1 ./scripts/build-macos-release.sh
+```
+
+`main` 分支 push 也会触发 [build-macos-dmg.yml](.github/workflows/build-macos-dmg.yml) 做 CI 验证（仅上传 Artifact，不创建 Release）。
+
+---
+
+## Windows 本地一键发版（备用）
+
+仅上传 **Windows zip + Setup**；macOS 产物仍建议走 GitHub Actions。
+
+```powershell
+.\scripts\release.bat
+# 同版本热修复
+.\scripts\release.bat -Retag
+```
+
+脚本会：结束 `claude-code-helper.exe` → 构建 ZIP + Setup → 打 tag 推送 → `gh release upload`。
+
+首次 Windows 本地发版可准备 `dist/RELEASE_NOTES_vX.Y.Z.md`；Actions 发版则直接读 `CHANGELOG.md`。
+
+---
 
 ## 下载
 
-预编译 Windows 安装包见 [GitHub Releases](https://github.com/xqnode/claude-code-helper/releases)：
+预编译安装包见 [GitHub Releases](https://github.com/xqnode/claude-code-helper/releases)：
 
 | 文件 | 说明 |
 |------|------|
-| `ClaudeCodeHelper-0.1.0-win64.zip` | 便携版 — 解压后运行 `claude-code-helper.exe` |
-| `ClaudeCodeHelper-0.1.0-Setup.exe` | Inno Setup 安装包（中文界面） |
+| `ClaudeCodeHelper-{version}-win64.zip` | Windows 便携版 — 解压后运行 `claude-code-helper.exe` |
+| `ClaudeCodeHelper-{version}-Setup.exe` | Windows Inno Setup 安装包（中文界面） |
+| `ClaudeCodeHelper-{version}-macos.app.zip` | macOS 便携 — 解压后运行 `Claude Code Helper.app` |
+| `ClaudeCodeHelper-{version}-macos.dmg` | macOS 安装镜像 — 拖入「应用程序」 |
 
 ### 运行要求
 
+**Windows**
+
 - Windows 10/11（64 位）
-- [WebView2 运行时](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 11 通常已预装）
+- [WebView2 运行时](https://developer.microsoft.com/microsoft-edge/webview2/)
+
+**macOS**
+
+- macOS 12+（Apple Silicon / Intel）
+- 当前 macOS 包以 CLI 代理模式运行（`start --no-tray`）；菜单栏托盘后续版本补齐
+- 测试包未签名/未公证：若提示「已损坏」，终端执行 `xattr -cr "/Applications/Claude Code Helper.app"`
+
+**通用**
+
 - Claude Code 桌面端
-- 至少一个支持厂商的 API Key（DeepSeek、千问等）
+- 至少一个支持厂商的 API Key
 
-## 从源码构建
-
-```powershell
-# 编译 Release + 打包 ZIP
-.\build-zip.bat
-
-# 编译 Release + ZIP + 安装包（需 Inno Setup 6）
-.\build-all.bat
-```
-
-产物输出到 `dist/` 目录。
-
-## 发布新版本
-
-1. 修改 `Cargo.toml` 中的 `version`，并更新 `CHANGELOG.md`。
-2. 构建产物：运行 `.\build-all.bat`
-3. 提交并打标签后创建 Release：
-
-   ```powershell
-   gh release create v0.1.1 dist/ClaudeCodeHelper-0.1.1-win64.zip dist/ClaudeCodeHelper-0.1.1-Setup.exe `
-     --title "v0.1.1" `
-     --notes-file CHANGELOG.md
-   ```
+---
 
 ## 版本规则
 

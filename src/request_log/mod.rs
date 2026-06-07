@@ -77,13 +77,22 @@ impl RequestLogStore {
     }
 
     pub async fn push(&self, entry: RequestLogEntry) {
-        {
-            let mut entries = self.inner.write().await;
-            entries.push_back(entry.clone());
-            while entries.len() > MAX_ENTRIES {
-                entries.pop_front();
+        if let Some(db) = &self.db {
+            if let Err(err) = db.insert(&entry) {
+                tracing::warn!("写入请求日志失败: {err:#}");
+            } else if let Err(err) = db.trim(MAX_ENTRIES) {
+                tracing::warn!("裁剪请求日志失败: {err:#}");
             }
         }
+        let mut entries = self.inner.write().await;
+        entries.push_back(entry);
+        while entries.len() > MAX_ENTRIES {
+            entries.pop_front();
+        }
+    }
+
+    /// 无 Tokio runtime 时直写 SQLite，避免 Drop 路径丢日志。
+    pub fn push_sync(&self, entry: RequestLogEntry) {
         if let Some(db) = &self.db {
             if let Err(err) = db.insert(&entry) {
                 tracing::warn!("写入请求日志失败: {err:#}");

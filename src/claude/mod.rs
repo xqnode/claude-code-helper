@@ -1,3 +1,4 @@
+pub mod ccd_binary;
 pub mod desktop_gateway;
 
 use serde_json::{Map, Value};

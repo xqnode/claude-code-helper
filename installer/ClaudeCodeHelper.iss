@@ -35,7 +35,8 @@ CloseApplications=force
 CloseApplicationsFilter=claude-code-helper.exe
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+; 使用仓库内语言包，避免 CI 静默安装 Inno Setup 时缺少 compiler:Languages\ChineseSimplified.isl
+Name: "chinesesimplified"; MessagesFile: "languages\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加选项:"; Flags: unchecked

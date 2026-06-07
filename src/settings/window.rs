@@ -116,7 +116,10 @@ fn create_settings_window<T>(
     center_on_screen(&window);
 
     let url = format!("http://127.0.0.1:{proxy_port}/admin/settings");
-    let webview = WebViewBuilder::new().with_url(&url).build(&window)?;
+    let webview = WebViewBuilder::new()
+        .with_devtools(false)
+        .with_url(&url)
+        .build(&window)?;
     crate::icon::apply_window_icon(&window);
 
     Ok(SettingsWindow {

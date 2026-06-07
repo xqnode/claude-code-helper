@@ -1,6 +1,14 @@
 //! Anthropic → Chat Completions 的 reasoning 能力描述（各厂商参数形态）。
 
+use serde::Serialize;
+
 use crate::config::ProviderConfig;
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ReasoningEffortOption {
+    pub value: &'static str,
+    pub label: &'static str,
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ChatReasoningConfig {
@@ -109,6 +117,50 @@ pub fn provider_needs_reasoning_content(provider: &ProviderConfig) -> bool {
         .unwrap_or(false)
 }
 
+pub fn provider_supports_reasoning_effort(provider: &ProviderConfig) -> bool {
+    provider
+        .chat_reasoning_config()
+        .and_then(|config| config.supports_effort)
+        .unwrap_or(false)
+}
+
+pub fn reasoning_effort_options_for(provider: &ProviderConfig) -> Vec<ReasoningEffortOption> {
+    if !provider_supports_reasoning_effort(provider) {
+        return Vec::new();
+    }
+    let mode = provider
+        .chat_reasoning_config()
+        .and_then(|config| config.effort_value_mode.clone())
+        .unwrap_or_else(|| "passthrough".into());
+    let choices: &[(&str, &str)] = match mode.as_str() {
+        "openrouter" => &[
+            ("none", "关闭"),
+            ("minimal", "极低"),
+            ("low", "低"),
+            ("medium", "中"),
+            ("high", "高"),
+            ("max", "最高"),
+        ],
+        "deepseek" => &[
+            ("none", "关闭"),
+            ("low", "低"),
+            ("medium", "中"),
+            ("high", "高"),
+            ("max", "最高"),
+        ],
+        _ => &[
+            ("none", "关闭"),
+            ("low", "低"),
+            ("medium", "中"),
+            ("high", "高"),
+        ],
+    };
+    choices
+        .iter()
+        .map(|(value, label)| ReasoningEffortOption { value, label })
+        .collect()
+}
+
 fn infer_custom_reasoning_config(base_url: &str) -> Option<ChatReasoningConfig> {
     let base = base_url.to_ascii_lowercase();
     if base.contains("moonshot") || base.contains("kimi") {
@@ -166,6 +218,7 @@ mod tests {
             default_model: "model".into(),
             api_model: "model".into(),
             wire_api: wire_api.into(),
+            base_url_customized: false,
         }
     }
 
@@ -183,6 +236,39 @@ mod tests {
         assert!(provider("deepseek", "https://api.deepseek.com/anthropic", "anthropic")
             .chat_reasoning_config()
             .is_none());
+    }
+
+    #[test]
+    fn reasoning_effort_support_and_options_follow_provider() {
+        let deepseek = provider("deepseek", "https://api.deepseek.com/v1", "chat");
+        assert!(provider_supports_reasoning_effort(&deepseek));
+        assert_eq!(
+            reasoning_effort_options_for(&deepseek)
+                .iter()
+                .map(|o| o.value)
+                .collect::<Vec<_>>(),
+            vec!["none", "low", "medium", "high", "max"]
+        );
+
+        let minimax = provider("minimax", "https://api.minimaxi.com/v1", "chat");
+        assert!(!provider_supports_reasoning_effort(&minimax));
+        assert!(reasoning_effort_options_for(&minimax).is_empty());
+
+        let custom_or = ProviderConfig {
+            id: "custom".into(),
+            name: "Custom".into(),
+            base_url: "https://openrouter.ai/api/v1".into(),
+            api_key_env: "KEY".into(),
+            default_model: "claude-opus-4-8".into(),
+            api_model: "anthropic/claude-opus-4".into(),
+            wire_api: "chat".into(),
+            base_url_customized: false,
+        };
+        assert!(provider_supports_reasoning_effort(&custom_or));
+        assert!(reasoning_effort_options_for(&custom_or)
+            .iter()
+            .any(|o| o.value == "minimal"));
+
     }
 
     #[test]

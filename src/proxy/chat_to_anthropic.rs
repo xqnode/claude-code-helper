@@ -137,8 +137,8 @@ impl AnthropicSseTranslator {
     pub fn convert_event(&mut self, chunk: &str) -> Vec<String> {
         let data_line = match chunk
             .lines()
-            .find(|line| line.starts_with("data: "))
-            .map(|line| line.trim_start_matches("data: ").trim())
+            .find_map(|line| super::sse::strip_sse_field(line, "data"))
+            .map(str::trim)
         {
             Some(line) => line,
             None => return Vec::new(),

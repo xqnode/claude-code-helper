@@ -421,6 +421,7 @@ mod tests {
             default_model: "deepseek-v4-pro".into(),
             api_model: "deepseek-v4-pro".into(),
             wire_api: "anthropic".into(),
+            base_url_customized: false,
         };
         let models = build_inference_models(&provider);
         assert_eq!(models[0]["labelOverride"], "deepseek-v4-flash · Fast");
@@ -438,6 +439,7 @@ mod tests {
             default_model: "deepseek-v4-pro".into(),
             api_model: "deepseek-v4-pro".into(),
             wire_api: "anthropic".into(),
+            base_url_customized: false,
         };
         assert_eq!(
             map_desktop_model(DESKTOP_ROLE_SONNET, &provider),

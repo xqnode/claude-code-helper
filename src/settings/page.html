@@ -197,6 +197,15 @@
       cursor: default;
     }
 
+    select.text-input {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 34px;
+      cursor: pointer;
+    }
+
     .provider-grid {
       display: flex;
       flex-wrap: wrap;
@@ -498,6 +507,10 @@
         <label class="field-label">厂商</label>
         <div class="provider-grid" id="providerGrid" role="radiogroup" aria-label="选择厂商"></div>
       </div>
+      <div class="field" id="reasoningEffortField" hidden>
+        <label class="field-label" for="reasoningEffortSelect">思考强度</label>
+        <select id="reasoningEffortSelect" class="text-input" aria-label="思考强度"></select>
+      </div>
       <div class="field">
         <label class="field-label" for="baseUrlInput">Base URL</label>
         <input id="baseUrlInput" class="text-input" type="url" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false" />
@@ -545,6 +558,37 @@
     let providers = [];
     let selectedId = '';
     let runtimeActive = '';
+    let modelReasoningEffort = 'medium';
+
+    const CUSTOM_EFFORT_OPTIONS = {
+      openrouter: [
+        { value: 'none', label: '关闭' },
+        { value: 'minimal', label: '极低' },
+        { value: 'low', label: '低' },
+        { value: 'medium', label: '中' },
+        { value: 'high', label: '高' },
+        { value: 'max', label: '最高' },
+      ],
+      deepseek: [
+        { value: 'none', label: '关闭' },
+        { value: 'low', label: '低' },
+        { value: 'medium', label: '中' },
+        { value: 'high', label: '高' },
+        { value: 'max', label: '最高' },
+      ],
+    };
+
+    function selectedEffortOptions() {
+      const p = selected();
+      if (!p) return [];
+      const url = (document.getElementById('baseUrlInput').value.trim() || p.base_url || '').toLowerCase();
+      if (url.includes('openrouter')) return CUSTOM_EFFORT_OPTIONS.openrouter;
+      if (url.includes('deepseek') && !url.includes('anthropic')) return CUSTOM_EFFORT_OPTIONS.deepseek;
+      if (p.supports_reasoning_effort) {
+        return p.reasoning_effort_options || [];
+      }
+      return [];
+    }
 
     function showStatus(text, kind) {
       const el = document.getElementById('status');
@@ -566,9 +610,14 @@
       return selectedId === 'custom';
     }
 
-    function customPayload() {
-      if (!isCustom()) return {};
+    function settingsPayload() {
       return { base_url: document.getElementById('baseUrlInput').value.trim() };
+    }
+
+    function baseUrlRequired() {
+      const p = selected();
+      if (!p || !isCustom()) return false;
+      return !document.getElementById('baseUrlInput').value.trim() && !p.base_url;
     }
 
     function updateSubtitle() {
@@ -600,10 +649,33 @@
       hideStatus();
       renderProviderGrid();
       refreshBaseUrlField();
+      refreshReasoningEffortField();
       refreshKeyField();
       updateSignupLink();
       updateKeyBadge(!!selected()?.key_configured);
       updateSubtitle();
+    }
+
+    function refreshReasoningEffortField() {
+      const options = selectedEffortOptions();
+      const field = document.getElementById('reasoningEffortField');
+      const select = document.getElementById('reasoningEffortSelect');
+      field.hidden = options.length === 0;
+      if (options.length === 0) {
+        select.innerHTML = '';
+        return;
+      }
+      select.innerHTML = '';
+      options.forEach(opt => {
+        const item = document.createElement('option');
+        item.value = opt.value;
+        item.textContent = opt.label;
+        select.appendChild(item);
+      });
+      const values = options.map(opt => opt.value);
+      select.value = values.includes(modelReasoningEffort)
+        ? modelReasoningEffort
+        : (values.includes('medium') ? 'medium' : (values[0] || 'medium'));
     }
 
     function refreshBaseUrlField() {
@@ -613,13 +685,13 @@
       const custom = isCustom();
 
       input.value = p?.base_url || '';
-      input.readOnly = !custom;
-      input.classList.toggle('readonly', !custom);
-      input.placeholder = custom ? 'https://api.example.com' : '';
+      input.readOnly = false;
+      input.classList.remove('readonly');
+      input.placeholder = custom ? 'https://api.example.com/v1' : (p?.base_url || 'https://api.example.com/v1');
 
       hint.textContent = custom
-        ? '中转站 Anthropic API 根地址（Helper 会自动请求 /v1/messages）'
-        : '官方地址（只读）';
+        ? '中转站 API 地址，末尾一般带 /v1；保存后永久写入本地'
+        : '可改为镜像/代理地址；保存后永久写入本地，留空则恢复官方默认';
     }
 
     function updateSignupLink() {
@@ -663,19 +735,25 @@
       }
     }
 
-    function initProviders(list, active) {
+    function initProviders(list, active, effort) {
       providers = list;
       runtimeActive = active || '';
+      modelReasoningEffort = effort || 'medium';
       selectedId = active || (list[0] && list[0].id) || '';
       renderProviderGrid();
       updateSubtitle();
       updateSignupLink();
       updateKeyBadge(!!selected()?.key_configured);
       refreshBaseUrlField();
+      refreshReasoningEffortField();
       refreshKeyField();
     }
 
-    document.getElementById('baseUrlInput').addEventListener('input', () => hideStatus());
+    document.getElementById('baseUrlInput').addEventListener('input', () => {
+      hideStatus();
+      refreshReasoningEffortField();
+    });
+    document.getElementById('reasoningEffortSelect').addEventListener('change', () => hideStatus());
 
     document.getElementById('toggleKey').addEventListener('click', () => {
       const input = document.getElementById('apiKey');
@@ -743,7 +821,7 @@
         showStatus('请先粘贴 API Key', 'err');
         return;
       }
-      if (isCustom() && !document.getElementById('baseUrlInput').value.trim() && !p.base_url) {
+      if (baseUrlRequired()) {
         showStatus('请填写 Base URL', 'err');
         return;
       }
@@ -753,7 +831,7 @@
         const data = await api('/admin/settings/test', {
           provider_id: p.id,
           api_key: key,
-          ...customPayload(),
+          ...settingsPayload(),
         });
         showStatus(data.message || (data.ok ? '连接成功' : '连接失败'), data.ok ? 'ok' : 'err');
       } catch (e) {
@@ -770,7 +848,7 @@
         showStatus('请先粘贴 API Key', 'err');
         return;
       }
-      if (isCustom() && !document.getElementById('baseUrlInput').value.trim() && !p.base_url) {
+      if (baseUrlRequired()) {
         showStatus('请填写 Base URL', 'err');
         return;
       }
@@ -781,20 +859,29 @@
       showStatus('正在保存…', 'info');
       document.getElementById('saveBtn').disabled = true;
       try {
-        const data = await api('/admin/settings/save', {
+        const payload = {
           provider_id: p.id,
           api_key: key,
-          ...customPayload(),
-        });
+          ...settingsPayload(),
+        };
+        if (selectedEffortOptions().length > 0) {
+          payload.model_reasoning_effort = document.getElementById('reasoningEffortSelect').value;
+        }
+        const data = await api('/admin/settings/save', payload);
         if (data.ok) {
           showStatus(data.message || '已保存，请重启 Claude Code 生效', 'ok');
-          if (isCustom()) {
-            p.base_url = document.getElementById('baseUrlInput').value.trim();
+          const boot = await fetch('/admin/settings/bootstrap').then(r => r.json());
+          if (!boot.error) {
+            const refreshed = (boot.providers || []).find(item => item.id === p.id);
+            if (refreshed) Object.assign(p, refreshed);
+            modelReasoningEffort = boot.model_reasoning_effort || modelReasoningEffort;
           }
           if (key) {
             p.key_configured = true;
             p.key_preview = maskKey(key);
           }
+          refreshBaseUrlField();
+          refreshReasoningEffortField();
           updateKeyBadge(true);
           refreshKeyField();
         } else {
@@ -821,7 +908,7 @@
           showStatus(data.message || '已清除', 'ok');
           const boot = await fetch('/admin/settings/bootstrap').then(r => r.json());
           if (!boot.error) {
-            initProviders(boot.providers || [], boot.active);
+            initProviders(boot.providers || [], boot.active, boot.model_reasoning_effort);
           }
           document.getElementById('apiKey').value = '';
         } else {
@@ -841,7 +928,7 @@
           showStatus('加载失败：' + data.error, 'err');
           return;
         }
-        initProviders(data.providers || [], data.active);
+        initProviders(data.providers || [], data.active, data.model_reasoning_effort);
       })
       .catch(e => showStatus('加载失败：' + e.message, 'err'));
   </script>

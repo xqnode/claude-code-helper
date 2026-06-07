@@ -758,6 +758,7 @@ mod tests {
             default_model: "deepseek-v4-pro".into(),
             api_model: "deepseek-v4-pro".into(),
             wire_api: "chat".into(),
+            base_url_customized: false,
         }
     }
 
@@ -770,6 +771,7 @@ mod tests {
             default_model: "qwen3.7-max".into(),
             api_model: "qwen3.7-max".into(),
             wire_api: "chat".into(),
+            base_url_customized: false,
         }
     }
 

@@ -316,6 +316,7 @@ mod tests {
             default_model: "deepseek-v4-pro".into(),
             api_model: "deepseek-v4-pro".into(),
             wire_api: "anthropic".into(),
+            base_url_customized: false,
         };
         let env = build_model_env(&provider);
         let map: std::collections::HashMap<_, _> = env.into_iter().collect();

@@ -328,6 +328,7 @@ mod tests {
             default_model: "qwen3.7-max".into(),
             api_model: "qwen3.7-max".into(),
             wire_api: "chat".into(),
+            base_url_customized: false,
         }
     }
 

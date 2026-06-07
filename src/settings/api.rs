@@ -54,6 +54,13 @@ pub async fn settings_bootstrap() -> impl IntoResponse {
         let key_preview = config::resolve_api_key(&preset.api_key_env)
             .ok()
             .map(|k| mask_key_preview(&k));
+        let supports_reasoning_effort =
+            provider::chat_reasoning::provider_supports_reasoning_effort(preset);
+        let reasoning_effort_options = if supports_reasoning_effort {
+            provider::chat_reasoning::reasoning_effort_options_for(preset)
+        } else {
+            Vec::new()
+        };
         providers.push(serde_json::json!({
             "id": preset.id,
             "name": preset.name,
@@ -61,12 +68,16 @@ pub async fn settings_bootstrap() -> impl IntoResponse {
             "key_configured": key_preview.is_some(),
             "key_preview": key_preview,
             "base_url": preset.base_url,
+            "base_url_customized": preset.base_url_customized,
             "is_custom": preset.id == "custom",
+            "supports_reasoning_effort": supports_reasoning_effort,
+            "reasoning_effort_options": reasoning_effort_options,
         }));
     }
 
     Json(serde_json::json!({
         "active": app.active,
+        "model_reasoning_effort": app.normalized_model_reasoning_effort(),
         "providers": providers,
     }))
     .into_response()
@@ -79,6 +90,8 @@ pub struct SettingsSaveBody {
     api_key: String,
     #[serde(default)]
     base_url: String,
+    #[serde(default)]
+    model_reasoning_effort: Option<String>,
 }
 
 pub async fn settings_save(
@@ -90,6 +103,7 @@ pub async fn settings_save(
         &body.provider_id,
         body.api_key.trim(),
         body.base_url.trim(),
+        body.model_reasoning_effort.as_deref(),
     )
     .await
     {
@@ -137,7 +151,7 @@ pub async fn settings_test(Json(body): Json<SettingsTestBody>) -> impl IntoRespo
         }
     };
 
-    if let Err(err) = apply_custom_base_url(&mut provider, body.base_url.trim()) {
+    if let Err(err) = apply_provider_base_url(&mut provider, body.base_url.trim()) {
         return Json(serde_json::json!({
             "ok": false,
             "message": format!("{err:#}"),
@@ -201,17 +215,23 @@ async fn save_api_key(
     provider_id: &str,
     api_key: &str,
     base_url: &str,
+    model_reasoning_effort: Option<&str>,
 ) -> anyhow::Result<String> {
     let mut app = AppConfig::load()?;
     provider::get_preset(&app, provider_id)?;
-    let provider_cfg = app
+    let provider_entry = app
         .providers
         .get_mut(provider_id)
         .ok_or_else(|| anyhow::anyhow!("未知模型预设: {provider_id}"))?;
 
-    apply_custom_base_url(provider_cfg, base_url)?;
+    apply_provider_base_url(provider_entry, base_url)?;
 
-    let provider = provider_cfg.clone();
+    let provider = provider_entry.clone();
+    if let Some(effort) = model_reasoning_effort {
+        if provider::chat_reasoning::provider_supports_reasoning_effort(&provider) {
+            app.model_reasoning_effort = config::normalize_model_reasoning_effort(effort);
+        }
+    }
     if !api_key.is_empty() {
         config::save_env_value(&provider.api_key_env, api_key)?;
     } else if config::resolve_api_key(&provider.api_key_env).is_err() {
@@ -230,19 +250,39 @@ async fn save_api_key(
     ))
 }
 
-fn apply_custom_base_url(
+fn builtin_base_url(provider_id: &str) -> String {
+    provider::presets::builtin_presets()
+        .into_iter()
+        .find(|preset| preset.id == provider_id)
+        .map(|preset| preset.base_url)
+        .unwrap_or_default()
+}
+
+fn apply_provider_base_url(
     provider: &mut config::ProviderConfig,
     base_url: &str,
 ) -> anyhow::Result<()> {
-    if provider.id != "custom" {
+    let default_url = builtin_base_url(&provider.id);
+
+    if provider.id == "custom" {
+        if base_url.is_empty() && provider.base_url.trim().is_empty() {
+            anyhow::bail!("请填写 Base URL");
+        }
+        if !base_url.is_empty() {
+            provider.base_url = config::validate_base_url(base_url)?;
+        }
+        provider.base_url_customized = true;
         return Ok(());
     }
-    if base_url.is_empty() && provider.base_url.trim().is_empty() {
-        anyhow::bail!("请填写 Base URL");
+
+    if base_url.is_empty() {
+        provider.base_url = default_url;
+        provider.base_url_customized = false;
+        return Ok(());
     }
-    if !base_url.is_empty() {
-        provider.base_url = config::validate_base_url(base_url)?;
-    }
+
+    provider.base_url = config::validate_base_url(base_url)?;
+    provider.base_url_customized = provider.base_url != default_url;
     Ok(())
 }
 

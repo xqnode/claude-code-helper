@@ -217,6 +217,9 @@ struct TrayWorker {
 #[cfg(windows)]
 fn handle_menu_click(ctx: &Arc<TrayContext>, id: &str) {
     if id == "quit" {
+        // 先释放 WebView，避免 Chromium 在进程退出时刷 stderr 噪音。
+        ctx.settings.borrow_mut().take();
+        ctx.logs.borrow_mut().take();
         std::process::exit(0);
     }
     if id == "settings" {

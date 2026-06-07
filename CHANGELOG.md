@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.1] - 2026-06-07
+
+### Added
+
+- 设置页暴露思考强度（`model_reasoning_effort`），仅对支持 effort 档位的厂商显示下拉（DeepSeek Chat、OpenRouter 中转等）
+- 所有内置厂商 Base URL 可编辑；新增 `base_url_customized`，预设同步不再覆盖用户自定义地址
+
+### Changed
+
+- `apply_provider_base_url` 与 codex-helper 对齐：留空恢复默认 Base URL，设置保存始终携带 `base_url`
+- SSE 解析复用 `strip_sse_field`，消除 dead_code 警告
+
+### Fixed
+
+- 减少 WebView2/Chromium 启动 stderr 噪音（`platform.rs` 浏览器参数、关闭 devtools、托盘退出前释放 WebView）
+
 ## [0.2.0] - 2026-06-07
 
 ### Added

@@ -9,6 +9,7 @@ mod env_sync;
 mod icon;
 mod logs;
 mod paths;
+mod platform;
 mod provider;
 mod proxy;
 mod request_log;
@@ -22,6 +23,8 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() {
+    platform::init();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::from_default_env()

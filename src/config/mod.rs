@@ -21,7 +21,7 @@ pub const DEFAULT_UPSTREAM_STREAM_READ_IDLE_TIMEOUT_SECS: u64 = 600;
 pub const DEFAULT_UPSTREAM_REQUEST_TIMEOUT_SECS: u64 = 600;
 
 const VALID_MODEL_REASONING_EFFORTS: &[&str] =
-    &["none", "minimal", "low", "medium", "high", "xhigh"];
+    &["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProxyConfig {
@@ -51,6 +51,9 @@ pub struct ProviderConfig {
     pub api_model: String,
     /// anthropic = 上游原生 Anthropic API；chat = OpenAI Chat Completions（由代理转换）
     pub wire_api: String,
+    /// 用户是否在设置页改过 Base URL（为 true 时 sync 不再覆盖为官方默认）。
+    #[serde(default)]
+    pub base_url_customized: bool,
 }
 
 impl ProviderConfig {

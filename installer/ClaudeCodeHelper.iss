@@ -3,7 +3,7 @@
 ; 或运行仓库根目录 build-installer.bat
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.2.0"
+  #define MyAppVersion "0.2.1"
 #endif
 
 #define MyAppName "Claude Code Helper"

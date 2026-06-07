@@ -248,6 +248,7 @@ mod tests {
             default_model: model.into(),
             api_model: model.into(),
             wire_api: "chat".into(),
+            base_url_customized: false,
         }
     }
 

@@ -89,6 +89,20 @@ mod tests {
     }
 
     #[test]
+    fn sync_preserves_custom_models() {
+        let mut app = AppConfig::default();
+        app.providers
+            .get_mut("custom")
+            .unwrap()
+            .custom_models = vec!["my-opus".into(), "my-sonnet".into()];
+        sync_builtin_presets(&mut app);
+        assert_eq!(
+            app.providers.get("custom").unwrap().custom_models,
+            vec!["my-opus".to_string(), "my-sonnet".to_string()]
+        );
+    }
+
+    #[test]
     fn sync_adds_minimax_to_legacy_config() {
         let mut app = AppConfig::default();
         app.providers.remove("minimax");

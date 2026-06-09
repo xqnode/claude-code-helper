@@ -10,8 +10,7 @@ use axum::{
 };
 use reqwest::Client;
 use tokio::sync::RwLock;
-use tower_http::trace::TraceLayer;
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::claude::desktop_gateway::{
     build_inference_models, request_uses_desktop_roles, rewrite_request_model, DESKTOP_ROLE_SONNET,
@@ -145,10 +144,7 @@ async fn run_listener(state: Arc<ProxyState>, addr: &str) -> anyhow::Result<()> 
         .route("/claude-desktop/v1/models", get(list_desktop_models))
         .route("/claude-desktop/v1/messages", post(proxy_desktop_messages))
         .fallback(any(catch_all))
-        .layer(TraceLayer::new_for_http())
         .with_state(state.as_ref().clone());
-
-    info!("Claude Code Helper 代理已启动: http://{addr}");
 
     let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
         anyhow::anyhow!("无法绑定端口 {addr}: {e}。请检查端口是否被占用。")
@@ -759,6 +755,7 @@ mod tests {
             api_model: "deepseek-v4-pro".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         }
     }
 
@@ -772,6 +769,7 @@ mod tests {
             api_model: "qwen3.7-max".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         }
     }
 

@@ -64,7 +64,7 @@ pub fn sync_desktop_gateway(app: &AppConfig, provider: &ProviderConfig) -> anyho
 
     cleanup_stale_gateway_profiles(&dir, &config_id)?;
     sync_desktop_app_config()?;
-    tracing::info!(
+    tracing::debug!(
         "已同步 Claude Desktop 双通道 Gateway（Code: {}，Cowork: {gateway_url}）",
         app.proxy_base_url()
     );
@@ -329,19 +329,7 @@ fn normalize_gateway_url(url: &str) -> String {
 }
 
 fn display_label_for_tier(provider: &ProviderConfig, tier: &str) -> String {
-    let models = crate::provider::models::popular_models(&provider.id);
-    if let Some(variant) = models.iter().find(|m| m.menu_tag == tier) {
-        return variant.slug.to_string();
-    }
-    if tier == "pro" {
-        if let Some(first) = models.first() {
-            return first.slug.to_string();
-        }
-    }
-    if let Some(last) = models.last() {
-        return last.slug.to_string();
-    }
-    provider.default_model.clone()
+    crate::provider::models::label_for_tier(provider, tier)
 }
 
 /// Haiku / Sonnet 常映射到同一上游型号，给 Desktop 下拉菜单加角色后缀避免重复。
@@ -366,25 +354,11 @@ fn display_labels_for_desktop_roles(provider: &ProviderConfig) -> (String, Strin
 }
 
 fn upstream_model_for_tier(provider: &ProviderConfig, tier: &str) -> String {
-    let models = crate::provider::models::popular_models(&provider.id);
-    if let Some(variant) = models.iter().find(|m| m.menu_tag == tier) {
-        return variant.api_model.to_string();
-    }
-    if tier == "pro" {
-        if let Some(first) = models.first() {
-            return first.api_model.to_string();
-        }
-    }
-    if let Some(last) = models.last() {
-        return last.api_model.to_string();
-    }
-    provider.upstream_model().to_string()
+    crate::provider::models::model_for_tier(provider, tier)
 }
 
 fn provider_supports_1m(provider: &ProviderConfig) -> bool {
-    crate::provider::models::popular_models(&provider.id)
-        .iter()
-        .any(|m| m.context_window >= 1_000_000)
+    crate::provider::models::provider_supports_1m(provider)
 }
 
 #[cfg(test)]
@@ -422,6 +396,7 @@ mod tests {
             api_model: "deepseek-v4-pro".into(),
             wire_api: "anthropic".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         };
         let models = build_inference_models(&provider);
         assert_eq!(models[0]["labelOverride"], "deepseek-v4-flash · Fast");
@@ -440,6 +415,7 @@ mod tests {
             api_model: "deepseek-v4-pro".into(),
             wire_api: "anthropic".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         };
         assert_eq!(
             map_desktop_model(DESKTOP_ROLE_SONNET, &provider),

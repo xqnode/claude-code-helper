@@ -196,6 +196,7 @@ mod tests {
             api_model: "qwen3.7-max".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         }
     }
 
@@ -209,6 +210,7 @@ mod tests {
             api_model: "deepseek-v4-pro".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         }
     }
 
@@ -222,6 +224,7 @@ mod tests {
             api_model: "MiniMax-M3".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         }
     }
 
@@ -235,6 +238,7 @@ mod tests {
             api_model: "kimi-k2.6".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         }
     }
 
@@ -248,6 +252,7 @@ mod tests {
             api_model: "glm-5.1".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         }
     }
 
@@ -261,6 +266,7 @@ mod tests {
             api_model: "mimo-v2.5-pro".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         }
     }
 
@@ -274,6 +280,7 @@ mod tests {
             api_model: "gpt-5.4".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         }
     }
 

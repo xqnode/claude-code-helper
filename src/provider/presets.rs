@@ -11,6 +11,7 @@ pub fn builtin_presets() -> Vec<ProviderConfig> {
             api_model: "deepseek-v4-pro".into(),
             wire_api: "anthropic".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         },
         ProviderConfig {
             id: "qwen".into(),
@@ -21,6 +22,7 @@ pub fn builtin_presets() -> Vec<ProviderConfig> {
             api_model: "qwen3.7-max".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         },
         ProviderConfig {
             id: "zhipu".into(),
@@ -31,6 +33,7 @@ pub fn builtin_presets() -> Vec<ProviderConfig> {
             api_model: "glm-5.1".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         },
         ProviderConfig {
             id: "kimi".into(),
@@ -41,6 +44,7 @@ pub fn builtin_presets() -> Vec<ProviderConfig> {
             api_model: "kimi-k2.6".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         },
         ProviderConfig {
             id: "minimax".into(),
@@ -51,6 +55,7 @@ pub fn builtin_presets() -> Vec<ProviderConfig> {
             api_model: "MiniMax-M3".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         },
         ProviderConfig {
             id: "mimo".into(),
@@ -61,6 +66,7 @@ pub fn builtin_presets() -> Vec<ProviderConfig> {
             api_model: "mimo-v2.5-pro".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         },
         ProviderConfig {
             id: "custom".into(),
@@ -71,6 +77,7 @@ pub fn builtin_presets() -> Vec<ProviderConfig> {
             api_model: "claude-opus-4-8".into(),
             wire_api: "anthropic".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         },
     ]
 }

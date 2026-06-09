@@ -219,6 +219,7 @@ mod tests {
             api_model: "model".into(),
             wire_api: wire_api.into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         }
     }
 
@@ -263,6 +264,7 @@ mod tests {
             api_model: "anthropic/claude-opus-4".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         };
         assert!(provider_supports_reasoning_effort(&custom_or));
         assert!(reasoning_effort_options_for(&custom_or)

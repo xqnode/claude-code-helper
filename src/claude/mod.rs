@@ -204,19 +204,7 @@ fn build_model_env(provider: &ProviderConfig) -> Vec<(String, String)> {
 }
 
 fn model_slug_for_tier(provider: &ProviderConfig, tier: &str) -> String {
-    let models = crate::provider::models::popular_models(&provider.id);
-    if let Some(variant) = models.iter().find(|m| m.menu_tag == tier) {
-        return variant.slug.to_string();
-    }
-    if tier == "pro" {
-        if let Some(first) = models.first() {
-            return first.slug.to_string();
-        }
-    }
-    if let Some(last) = models.last() {
-        return last.slug.to_string();
-    }
-    provider.default_model.clone()
+    crate::provider::models::model_for_tier(provider, tier)
 }
 
 fn helper_env_keys() -> Vec<&'static str> {
@@ -317,6 +305,7 @@ mod tests {
             api_model: "deepseek-v4-pro".into(),
             wire_api: "anthropic".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         };
         let env = build_model_env(&provider);
         let map: std::collections::HashMap<_, _> = env.into_iter().collect();

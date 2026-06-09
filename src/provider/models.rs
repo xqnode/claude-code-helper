@@ -1,3 +1,11 @@
+#[derive(Debug, Clone)]
+pub struct ModelEntry {
+    pub slug: String,
+    pub display_name: String,
+    pub api_model: String,
+    pub context_window: Option<u32>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ModelVariant {
     pub slug: &'static str,
@@ -21,15 +29,41 @@ pub fn popular_models(provider_id: &str) -> &'static [ModelVariant] {
     }
 }
 
+pub fn list_models(provider: &crate::config::ProviderConfig) -> Vec<ModelEntry> {
+    if provider.id == "custom" {
+        if provider.custom_models.is_empty() {
+            return relay_default_models();
+        }
+        return provider
+            .custom_models
+            .iter()
+            .map(|slug| custom_model_entry(slug))
+            .collect();
+    }
+    popular_models(&provider.id)
+        .iter()
+        .map(|m| static_model_entry(m))
+        .collect()
+}
+
 pub fn find_model(provider_id: &str, slug: &str) -> Option<&'static ModelVariant> {
     popular_models(provider_id)
         .iter()
         .find(|m| m.slug == slug)
 }
 
+pub fn find_model_entry(provider: &crate::config::ProviderConfig, slug: &str) -> Option<ModelEntry> {
+    list_models(provider)
+        .into_iter()
+        .find(|m| m.slug == slug)
+}
+
 /// 托盘菜单用的型号简称（如 flash、pro）。
-pub fn menu_tag(provider: &crate::config::ProviderConfig) -> Option<&'static str> {
-    find_model(&provider.id, &provider.default_model).map(|m| m.menu_tag)
+pub fn menu_tag(provider: &crate::config::ProviderConfig) -> Option<String> {
+    if provider.id == "custom" {
+        return Some(short_model_tag(&provider.default_model));
+    }
+    find_model(&provider.id, &provider.default_model).map(|m| m.menu_tag.to_string())
 }
 
 /// 托盘菜单用，如 1M、256K。
@@ -43,18 +77,66 @@ pub fn format_context_window(tokens: u32) -> String {
     }
 }
 
-pub fn tray_model_label(model: &ModelVariant, active: bool) -> String {
-    let label = format!(
-        "{} · {}",
-        model.display_name,
-        format_context_window(model.context_window)
-    );
+pub fn tray_model_entry_label(model: &ModelEntry, active: bool) -> String {
+    let label = if let Some(tokens) = model.context_window {
+        format!("{} · {}", model.display_name, format_context_window(tokens))
+    } else {
+        model.display_name.clone()
+    };
     if active {
         format!("✓ {label}")
     } else {
         label
     }
 }
+
+pub fn parse_custom_model_ids(raw: &str) -> Vec<String> {
+    raw.split(['\n', ',', ';'])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+pub fn normalize_custom_models(raw: &str) -> anyhow::Result<Vec<String>> {
+    let mut out = Vec::new();
+    for part in parse_custom_model_ids(raw) {
+        validate_custom_model_id(&part)?;
+        if !out.iter().any(|existing| existing == &part) {
+            out.push(part);
+        }
+    }
+    if out.len() > MAX_CUSTOM_MODELS {
+        anyhow::bail!("最多支持 {MAX_CUSTOM_MODELS} 个模型");
+    }
+    Ok(out)
+}
+
+pub fn validate_custom_model_id(id: &str) -> anyhow::Result<()> {
+    if id.is_empty() {
+        anyhow::bail!("模型 ID 不能为空");
+    }
+    if id.len() > MAX_CUSTOM_MODEL_ID_LEN {
+        anyhow::bail!("模型 ID 过长（最多 {MAX_CUSTOM_MODEL_ID_LEN} 字符）");
+    }
+    let mut chars = id.chars();
+    let Some(first) = chars.next() else {
+        anyhow::bail!("模型 ID 不能为空");
+    };
+    if !first.is_ascii_alphanumeric() {
+        anyhow::bail!("模型 ID 需以字母或数字开头");
+    }
+    if !id
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
+    {
+        anyhow::bail!("模型 ID 仅支持字母、数字、点、下划线、连字符");
+    }
+    Ok(())
+}
+
+const MAX_CUSTOM_MODELS: usize = 20;
+const MAX_CUSTOM_MODEL_ID_LEN: usize = 128;
 
 const DEEPSEEK_MODELS: &[ModelVariant] = &[
     ModelVariant {
@@ -186,11 +268,11 @@ pub fn apply_model_variant(
     provider: &mut crate::config::ProviderConfig,
     slug: &str,
 ) -> anyhow::Result<()> {
-    let variant = find_model(&provider.id, slug).ok_or_else(|| {
+    let variant = find_model_entry(provider, slug).ok_or_else(|| {
         anyhow::anyhow!("未知模型: {slug}")
     })?;
-    provider.default_model = variant.slug.to_string();
-    provider.api_model = variant.api_model.to_string();
+    provider.default_model = variant.slug;
+    provider.api_model = variant.api_model;
     Ok(())
 }
 
@@ -218,20 +300,132 @@ fn migrate_legacy_model_slug(provider: &mut crate::config::ProviderConfig) {
 
 pub fn ensure_valid_model(provider: &mut crate::config::ProviderConfig) {
     migrate_legacy_model_slug(provider);
-    if find_model(&provider.id, &provider.default_model).is_some() {
+    if find_model_entry(provider, &provider.default_model).is_some() {
+        if provider.id == "custom" {
+            provider.api_model = provider.default_model.clone();
+        } else if let Some(variant) = find_model(&provider.id, &provider.default_model) {
+            provider.api_model = variant.api_model.to_string();
+        }
         return;
     }
-    if let Some(first) = popular_models(&provider.id).first() {
-        provider.default_model = first.slug.to_string();
-        provider.api_model = first.api_model.to_string();
+    if let Some(first) = list_models(provider).first() {
+        provider.default_model = first.slug.clone();
+        provider.api_model = first.api_model.clone();
     }
 }
 
 pub fn sync_model_metadata(provider: &mut crate::config::ProviderConfig) {
     ensure_valid_model(provider);
+    if provider.id == "custom" {
+        if find_model_entry(provider, &provider.default_model).is_some() {
+            provider.api_model = provider.default_model.clone();
+        }
+        return;
+    }
     if let Some(variant) = find_model(&provider.id, &provider.default_model) {
         provider.api_model = variant.api_model.to_string();
     }
+}
+
+pub fn model_for_tier(provider: &crate::config::ProviderConfig, tier: &str) -> String {
+    if provider.id == "custom" || popular_models(&provider.id).is_empty() {
+        let models = list_models(provider);
+        return match tier {
+            "pro" => models
+                .first()
+                .map(|m| m.api_model.clone())
+                .unwrap_or_else(|| provider.default_model.clone()),
+            _ => models
+                .last()
+                .map(|m| m.api_model.clone())
+                .unwrap_or_else(|| provider.default_model.clone()),
+        };
+    }
+
+    let models = popular_models(&provider.id);
+    if let Some(variant) = models.iter().find(|m| m.menu_tag == tier) {
+        return variant.api_model.to_string();
+    }
+    if tier == "pro" {
+        if let Some(first) = models.first() {
+            return first.api_model.to_string();
+        }
+    }
+    if let Some(last) = models.last() {
+        return last.api_model.to_string();
+    }
+    provider.upstream_model().to_string()
+}
+
+pub fn label_for_tier(provider: &crate::config::ProviderConfig, tier: &str) -> String {
+    if provider.id == "custom" || popular_models(&provider.id).is_empty() {
+        let models = list_models(provider);
+        return match tier {
+            "pro" => models
+                .first()
+                .map(|m| m.slug.clone())
+                .unwrap_or_else(|| provider.default_model.clone()),
+            _ => models
+                .last()
+                .map(|m| m.slug.clone())
+                .unwrap_or_else(|| provider.default_model.clone()),
+        };
+    }
+
+    let models = popular_models(&provider.id);
+    if let Some(variant) = models.iter().find(|m| m.menu_tag == tier) {
+        return variant.slug.to_string();
+    }
+    if tier == "pro" {
+        if let Some(first) = models.first() {
+            return first.slug.to_string();
+        }
+    }
+    if let Some(last) = models.last() {
+        return last.slug.to_string();
+    }
+    provider.default_model.clone()
+}
+
+pub fn provider_supports_1m(provider: &crate::config::ProviderConfig) -> bool {
+    list_models(provider)
+        .iter()
+        .filter_map(|m| m.context_window)
+        .any(|tokens| tokens >= 1_000_000)
+}
+
+fn relay_default_models() -> Vec<ModelEntry> {
+    RELAY_CLAUDE_MODELS
+        .iter()
+        .map(|m| static_model_entry(m))
+        .collect()
+}
+
+fn static_model_entry(model: &ModelVariant) -> ModelEntry {
+    ModelEntry {
+        slug: model.slug.to_string(),
+        display_name: model.display_name.to_string(),
+        api_model: model.api_model.to_string(),
+        context_window: Some(model.context_window),
+    }
+}
+
+fn custom_model_entry(slug: &str) -> ModelEntry {
+    ModelEntry {
+        slug: slug.to_string(),
+        display_name: slug.to_string(),
+        api_model: slug.to_string(),
+        context_window: None,
+    }
+}
+
+fn short_model_tag(slug: &str) -> String {
+    slug.rsplit(['-', '.', '/'])
+        .next()
+        .unwrap_or(slug)
+        .chars()
+        .take(12)
+        .collect()
 }
 
 #[cfg(test)]
@@ -249,6 +443,7 @@ mod tests {
             api_model: model.into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         }
     }
 
@@ -273,11 +468,14 @@ mod tests {
     fn tray_model_label_includes_context() {
         let model = find_model("deepseek", "deepseek-v4-flash").unwrap();
         assert_eq!(
-            tray_model_label(model, true),
+            tray_model_entry_label(&static_model_entry(model), true),
             "✓ DeepSeek V4 Flash · 1M"
         );
         let glm = find_model("zhipu", "glm-5.1").unwrap();
-        assert_eq!(tray_model_label(glm, false), "GLM-5.1（旗舰） · 200K");
+        assert_eq!(
+            tray_model_entry_label(&static_model_entry(glm), false),
+            "GLM-5.1（旗舰） · 200K"
+        );
     }
 
     #[test]
@@ -294,6 +492,38 @@ mod tests {
         assert_eq!(models[0].slug, "claude-opus-4-8");
         assert_eq!(models[1].slug, "claude-opus-4-7");
         assert_eq!(models[2].slug, "claude-sonnet-4-6");
+    }
+
+    #[test]
+    fn custom_models_override_defaults() {
+        let mut p = provider("custom", "claude-opus-4-8");
+        p.custom_models = vec![
+            "my-opus".into(),
+            "my-sonnet".into(),
+        ];
+        let models = list_models(&p);
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].slug, "my-opus");
+        assert_eq!(models[1].slug, "my-sonnet");
+    }
+
+    #[test]
+    fn parse_custom_models_supports_newlines_and_commas() {
+        let parsed = parse_custom_model_ids("claude-opus-4-8\nclaude-sonnet-4-6, claude-haiku-4-5");
+        assert_eq!(
+            parsed,
+            vec![
+                "claude-opus-4-8".to_string(),
+                "claude-sonnet-4-6".to_string(),
+                "claude-haiku-4-5".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn normalize_custom_models_deduplicates() {
+        let models = normalize_custom_models("a\na\nb").unwrap();
+        assert_eq!(models, vec!["a".to_string(), "b".to_string()]);
     }
 
     #[test]
@@ -316,4 +546,3 @@ mod tests {
         }
     }
 }
-

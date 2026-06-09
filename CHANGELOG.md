@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.2] - 2026-06-07
+
+### Added
+
+- 中转站支持自定义模型列表：设置页可输入多个模型 ID（每行一个），托盘菜单与 Cowork Gateway 同步展示
+
+### Changed
+
+- 托盘/代理启动默认静默：关闭 tracing 输出、移除 HTTP TraceLayer、Windows 托盘模式自动脱离控制台
+
+### Fixed
+
+- Gateway 下拉菜单中 Haiku/Sonnet 同映射 flash 档时，显示 `· Fast` / `· Default` 后缀避免重复
+
 ## [0.2.1] - 2026-06-07
 
 ### Added

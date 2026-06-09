@@ -54,6 +54,9 @@ pub struct ProviderConfig {
     /// 用户是否在设置页改过 Base URL（为 true 时 sync 不再覆盖为官方默认）。
     #[serde(default)]
     pub base_url_customized: bool,
+    /// 中转站自定义模型 ID（按顺序：首项=Opus 档，末项=Haiku 档；空则使用内置 Claude 默认列表）
+    #[serde(default)]
+    pub custom_models: Vec<String>,
 }
 
 impl ProviderConfig {
@@ -86,6 +89,7 @@ impl ProviderConfig {
             ("custom", "claude-opus-4-8") => "Claude Opus 4.8".into(),
             ("custom", "claude-opus-4-7") => "Claude Opus 4.7".into(),
             ("custom", "claude-sonnet-4-6") => "Claude Sonnet 4.6".into(),
+            ("custom", slug) if self.custom_models.contains(&slug.to_string()) => slug.into(),
             _ => self.name.clone(),
         }
     }

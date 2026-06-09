@@ -67,6 +67,7 @@ impl Default for ProviderHealth {
 
 #[cfg(windows)]
 pub async fn run_with_proxy(app: AppConfig) -> anyhow::Result<()> {
+    detach_console_if_attached();
     let rt_handle = tokio::runtime::Handle::current();
     let config = Arc::new(RwLock::new(app.clone()));
     let proxy = proxy::spawn_server(app.clone())?;
@@ -110,12 +111,6 @@ pub async fn run_with_proxy(app: AppConfig) -> anyhow::Result<()> {
 
     let menu_channel = MenuEvent::receiver();
     let ctx_for_loop = ctx.clone();
-
-    let model = app
-        .active_provider()
-        .map(|p| p.name.as_str())
-        .unwrap_or("?");
-    println!("✅ Claude Code Helper · {} · {}", model, app.proxy_base_url());
 
     if settings::needs_first_run_setup() {
         let _ = ctx.loop_proxy.send_event(TrayUserEvent::OpenSettings);
@@ -515,10 +510,10 @@ fn build_menu(app: &AppConfig, health: &ProviderHealth) -> anyhow::Result<Menu> 
             provider_label,
             true,
         );
-        for model in crate::provider::models::popular_models(&preset.id) {
+        for model in crate::provider::models::list_models(preset) {
             let is_active =
                 preset.id == app.active && preset.default_model == model.slug;
-            let label = crate::provider::models::tray_model_label(model, is_active);
+            let label = crate::provider::models::tray_model_entry_label(&model, is_active);
             provider_sub.append(&MenuItem::with_id(
                 format!("use:{}:{}", preset.id, model.slug),
                 label,
@@ -593,6 +588,19 @@ fn build_menu(app: &AppConfig, health: &ProviderHealth) -> anyhow::Result<Menu> 
     menu.append(&PredefinedMenuItem::separator())?;
     menu.append(&MenuItem::with_id("quit", "退出 Claude Code Helper", true, None))?;
     Ok(menu)
+}
+
+#[cfg(windows)]
+fn detach_console_if_attached() {
+    unsafe extern "system" {
+        fn GetConsoleWindow() -> *mut std::ffi::c_void;
+        fn FreeConsole() -> i32;
+    }
+    unsafe {
+        if !GetConsoleWindow().is_null() {
+            FreeConsole();
+        }
+    }
 }
 
 #[cfg(not(windows))]

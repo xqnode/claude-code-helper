@@ -64,7 +64,7 @@ impl RequestLogStore {
         if let Some(db) = &db {
             match db.load_recent(MAX_ENTRIES) {
                 Ok(loaded) => {
-                    tracing::info!("已加载 {} 条历史请求日志", loaded.len());
+                    tracing::debug!("已加载 {} 条历史请求日志", loaded.len());
                     entries = loaded.into_iter().collect();
                 }
                 Err(err) => tracing::warn!("加载请求日志失败: {err:#}"),

@@ -329,6 +329,7 @@ mod tests {
             api_model: "qwen3.7-max".into(),
             wire_api: "chat".into(),
             base_url_customized: false,
+            custom_models: Vec::new(),
         }
     }
 

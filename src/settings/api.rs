@@ -72,6 +72,7 @@ pub async fn settings_bootstrap() -> impl IntoResponse {
             "is_custom": preset.id == "custom",
             "supports_reasoning_effort": supports_reasoning_effort,
             "reasoning_effort_options": reasoning_effort_options,
+            "custom_models": preset.custom_models,
         }));
     }
 
@@ -92,6 +93,8 @@ pub struct SettingsSaveBody {
     base_url: String,
     #[serde(default)]
     model_reasoning_effort: Option<String>,
+    #[serde(default)]
+    custom_models: String,
 }
 
 pub async fn settings_save(
@@ -104,6 +107,7 @@ pub async fn settings_save(
         body.api_key.trim(),
         body.base_url.trim(),
         body.model_reasoning_effort.as_deref(),
+        body.custom_models.trim(),
     )
     .await
     {
@@ -127,6 +131,8 @@ pub struct SettingsTestBody {
     api_key: String,
     #[serde(default)]
     base_url: String,
+    #[serde(default)]
+    custom_models: String,
 }
 pub async fn settings_test(Json(body): Json<SettingsTestBody>) -> impl IntoResponse {
     let app = match AppConfig::load() {
@@ -152,6 +158,13 @@ pub async fn settings_test(Json(body): Json<SettingsTestBody>) -> impl IntoRespo
     };
 
     if let Err(err) = apply_provider_base_url(&mut provider, body.base_url.trim()) {
+        return Json(serde_json::json!({
+            "ok": false,
+            "message": format!("{err:#}"),
+        }))
+        .into_response();
+    }
+    if let Err(err) = apply_custom_models(&mut provider, body.custom_models.trim()) {
         return Json(serde_json::json!({
             "ok": false,
             "message": format!("{err:#}"),
@@ -216,6 +229,7 @@ async fn save_api_key(
     api_key: &str,
     base_url: &str,
     model_reasoning_effort: Option<&str>,
+    custom_models: &str,
 ) -> anyhow::Result<String> {
     let mut app = AppConfig::load()?;
     provider::get_preset(&app, provider_id)?;
@@ -225,6 +239,7 @@ async fn save_api_key(
         .ok_or_else(|| anyhow::anyhow!("未知模型预设: {provider_id}"))?;
 
     apply_provider_base_url(provider_entry, base_url)?;
+    apply_custom_models(provider_entry, custom_models)?;
 
     let provider = provider_entry.clone();
     if let Some(effort) = model_reasoning_effort {
@@ -283,6 +298,22 @@ fn apply_provider_base_url(
 
     provider.base_url = config::validate_base_url(base_url)?;
     provider.base_url_customized = provider.base_url != default_url;
+    Ok(())
+}
+
+fn apply_custom_models(
+    provider: &mut config::ProviderConfig,
+    custom_models: &str,
+) -> anyhow::Result<()> {
+    if provider.id != "custom" {
+        return Ok(());
+    }
+    if custom_models.is_empty() {
+        provider.custom_models.clear();
+    } else {
+        provider.custom_models = provider::models::normalize_custom_models(custom_models)?;
+    }
+    provider::models::ensure_valid_model(provider);
     Ok(())
 }
 

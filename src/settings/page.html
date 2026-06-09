@@ -206,6 +206,31 @@
       cursor: pointer;
     }
 
+    .text-area {
+      width: 100%;
+      min-height: 108px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-family: Consolas, "Cascadia Mono", "Segoe UI Mono", monospace;
+      color: var(--text);
+      background: #fff;
+      resize: vertical;
+      line-height: 1.5;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .text-area:hover {
+      border-color: #cbd5e1;
+    }
+
+    .text-area:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-soft);
+    }
+
     .provider-grid {
       display: flex;
       flex-wrap: wrap;
@@ -516,6 +541,11 @@
         <input id="baseUrlInput" class="text-input" type="url" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false" />
         <p class="field-foot" id="baseUrlHint">OpenAI 兼容 API 地址，末尾一般带 /v1</p>
       </div>
+      <div class="field" id="customModelsField" hidden>
+        <label class="field-label" for="customModelsInput">模型列表</label>
+        <textarea id="customModelsInput" class="text-area" spellcheck="false" placeholder="claude-opus-4-8&#10;claude-opus-4-7&#10;claude-sonnet-4-6"></textarea>
+        <p class="field-foot" id="customModelsHint">每行一个模型 ID，也支持逗号分隔。留空则使用默认 Claude 三档；首项对应 Opus 档，末项对应 Haiku 档。</p>
+      </div>
       <div class="field">
         <label class="field-label" for="apiKey">
           API Key
@@ -611,7 +641,13 @@
     }
 
     function settingsPayload() {
-      return { base_url: document.getElementById('baseUrlInput').value.trim() };
+      const payload = {
+        base_url: document.getElementById('baseUrlInput').value.trim(),
+      };
+      if (isCustom()) {
+        payload.custom_models = document.getElementById('customModelsInput').value.trim();
+      }
+      return payload;
     }
 
     function baseUrlRequired() {
@@ -650,6 +686,7 @@
       renderProviderGrid();
       refreshBaseUrlField();
       refreshReasoningEffortField();
+      refreshCustomModelsField();
       refreshKeyField();
       updateSignupLink();
       updateKeyBadge(!!selected()?.key_configured);
@@ -676,6 +713,20 @@
       select.value = values.includes(modelReasoningEffort)
         ? modelReasoningEffort
         : (values.includes('medium') ? 'medium' : (values[0] || 'medium'));
+    }
+
+    function refreshCustomModelsField() {
+      const p = selected();
+      const field = document.getElementById('customModelsField');
+      const input = document.getElementById('customModelsInput');
+      const custom = isCustom();
+      field.hidden = !custom;
+      if (!custom) {
+        input.value = '';
+        return;
+      }
+      const models = Array.isArray(p?.custom_models) ? p.custom_models : [];
+      input.value = models.join('\n');
     }
 
     function refreshBaseUrlField() {
@@ -746,6 +797,7 @@
       updateKeyBadge(!!selected()?.key_configured);
       refreshBaseUrlField();
       refreshReasoningEffortField();
+      refreshCustomModelsField();
       refreshKeyField();
     }
 
@@ -754,6 +806,7 @@
       refreshReasoningEffortField();
     });
     document.getElementById('reasoningEffortSelect').addEventListener('change', () => hideStatus());
+    document.getElementById('customModelsInput').addEventListener('input', () => hideStatus());
 
     document.getElementById('toggleKey').addEventListener('click', () => {
       const input = document.getElementById('apiKey');
@@ -882,6 +935,7 @@
           }
           refreshBaseUrlField();
           refreshReasoningEffortField();
+          refreshCustomModelsField();
           updateKeyBadge(true);
           refreshKeyField();
         } else {

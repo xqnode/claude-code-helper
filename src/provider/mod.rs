@@ -34,6 +34,25 @@ pub fn migrate_legacy_providers(app: &mut crate::config::AppConfig) {
     }
 }
 
+/// 根据中转站 Base URL 推断上游协议：OpenAI 兼容走 chat，Anthropic 原生走 anthropic。
+pub fn infer_custom_wire_api(base_url: &str) -> &'static str {
+    let base = base_url.trim().to_ascii_lowercase();
+    if base.is_empty() {
+        return "anthropic";
+    }
+    if base.contains("/openai")
+        || base.contains("openrouter")
+        || base.contains("compatible-mode")
+        || base.contains("/v1/chat")
+    {
+        return "chat";
+    }
+    if base.contains("/anthropic") {
+        return "anthropic";
+    }
+    "anthropic"
+}
+
 /// 合并内置模型预设（新增 Minimax 等、更新显示名）。
 pub fn sync_builtin_presets(app: &mut crate::config::AppConfig) {
     migrate_legacy_providers(app);
@@ -45,7 +64,11 @@ pub fn sync_builtin_presets(app: &mut crate::config::AppConfig) {
             }
             existing.api_key_env = preset.api_key_env.clone();
             existing.name = preset.name.clone();
-            existing.wire_api = preset.wire_api.clone();
+            if existing.id == "custom" && existing.base_url_customized {
+                existing.wire_api = infer_custom_wire_api(&existing.base_url).into();
+            } else {
+                existing.wire_api = preset.wire_api.clone();
+            }
             models::sync_model_metadata(existing);
         } else {
             app.providers.insert(preset.id.clone(), preset);
@@ -100,6 +123,30 @@ mod tests {
             app.providers.get("custom").unwrap().custom_models,
             vec!["my-opus".to_string(), "my-sonnet".to_string()]
         );
+    }
+
+    #[test]
+    fn infer_custom_wire_api_detects_openai_relay() {
+        assert_eq!(
+            infer_custom_wire_api("https://freeapi.highwayapi.ai/openai/v1"),
+            "chat"
+        );
+        assert_eq!(
+            infer_custom_wire_api("https://api.example.com/anthropic"),
+            "anthropic"
+        );
+    }
+
+    #[test]
+    fn sync_custom_openai_relay_uses_chat_wire_api() {
+        let mut app = AppConfig::default();
+        {
+            let custom = app.providers.get_mut("custom").unwrap();
+            custom.base_url = "https://freeapi.highwayapi.ai/openai/v1".into();
+            custom.base_url_customized = true;
+        }
+        sync_builtin_presets(&mut app);
+        assert_eq!(app.providers.get("custom").unwrap().wire_api, "chat");
     }
 
     #[test]

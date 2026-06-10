@@ -287,6 +287,7 @@ fn apply_provider_base_url(
             provider.base_url = config::validate_base_url(base_url)?;
         }
         provider.base_url_customized = true;
+        provider.wire_api = provider::infer_custom_wire_api(&provider.base_url).into();
         return Ok(());
     }
 

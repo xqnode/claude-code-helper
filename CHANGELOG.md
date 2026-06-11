@@ -8,7 +8,7 @@
 
 ### Changed
 
-- 「中转站」更名为「自定义」；接入协议改为下拉选择（OpenAI-compatible / Anthropic-compatible）
+- 「中转站」更名为「自定义」；接入协议改为下拉选择，**默认 Anthropic-compatible**（与 v0.2.3 一致），可选 OpenAI-compatible
 - 自定义模型 ID 支持 `vendor/model` 命名空间格式（如 `deepseek-ai/deepseek-v4-pro`）
 - 自定义 OpenAI 协议可对接 NVIDIA 等上游：Claude 角色模型自动映射、reasoning 参数注入
 - 启动更静默：移除 CLI 启动输出、取消首次自动打开设置页、加强 WebView2 stderr 抑制

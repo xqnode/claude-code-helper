@@ -75,7 +75,7 @@ pub fn builtin_presets() -> Vec<ProviderConfig> {
             api_key_env: "CUSTOM_API_KEY".into(),
             default_model: "claude-opus-4-8".into(),
             api_model: "claude-opus-4-8".into(),
-            wire_api: "chat".into(),
+            wire_api: "anthropic".into(),
             base_url_customized: false,
             custom_models: Vec::new(),
         },

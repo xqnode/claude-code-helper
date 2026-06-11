@@ -134,6 +134,20 @@ mod tests {
     }
 
     #[test]
+    fn custom_preset_defaults_to_anthropic_wire_api() {
+        let custom = presets::builtin_presets()
+            .into_iter()
+            .find(|p| p.id == "custom")
+            .expect("custom preset");
+        assert_eq!(custom.wire_api, "anthropic");
+
+        let mut app = AppConfig::default();
+        app.providers.get_mut("custom").unwrap().wire_api = "chat".into();
+        sync_builtin_presets(&mut app);
+        assert_eq!(app.providers.get("custom").unwrap().wire_api, "anthropic");
+    }
+
+    #[test]
     fn infer_custom_wire_api_detects_openai_relay() {
         assert_eq!(
             infer_custom_wire_api("https://freeapi.highwayapi.ai/openai/v1"),

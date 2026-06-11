@@ -539,7 +539,7 @@
       <div class="field" id="wireApiField" hidden>
         <label class="field-label" for="wireApiSelect">接入协议</label>
         <select id="wireApiSelect" class="text-input" aria-label="接入协议"></select>
-        <p class="field-foot" id="wireApiHint">适用于兼容 OpenAI API 的代理、聚合平台和自建服务。</p>
+        <p class="field-foot" id="wireApiHint">适用于原生 Anthropic Messages API 的代理或镜像服务。</p>
       </div>
       <div class="field">
         <label class="field-label" for="baseUrlInput" id="baseUrlLabel">Base URL</label>
@@ -594,18 +594,18 @@
     let selectedId = '';
     let runtimeActive = '';
     let modelReasoningEffort = 'medium';
-    let selectedWireApi = 'chat';
+    let selectedWireApi = 'anthropic';
 
     const WIRE_API_OPTIONS = [
-      {
-        value: 'chat',
-        label: 'OpenAI-compatible',
-        hint: '适用于兼容 OpenAI API 的代理、聚合平台和自建服务。',
-      },
       {
         value: 'anthropic',
         label: 'Anthropic-compatible',
         hint: '适用于原生 Anthropic Messages API 的代理或镜像服务。',
+      },
+      {
+        value: 'chat',
+        label: 'OpenAI-compatible',
+        hint: '适用于兼容 OpenAI API 的代理、聚合平台和自建服务。',
       },
     ];
 

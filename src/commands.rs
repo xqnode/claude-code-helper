@@ -102,11 +102,6 @@ async fn cmd_start(no_tray: bool) -> anyhow::Result<()> {
     }
 
     ensure_proxy_port_available(&app).await?;
-    println!(
-        "🚀 {} · {} · Ctrl+C 停止",
-        app.proxy_base_url(),
-        app.active_provider()?.name
-    );
     proxy::start_server(app).await
 }
 

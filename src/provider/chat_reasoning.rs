@@ -98,6 +98,18 @@ fn minimax_thinking() -> ChatReasoningConfig {
     }
 }
 
+fn nvidia_thinking() -> ChatReasoningConfig {
+    ChatReasoningConfig {
+        supports_thinking: Some(true),
+        supports_effort: Some(false),
+        thinking_param: Some("chat_template_kwargs".into()),
+        effort_param: Some("none".into()),
+        output_format: Some("reasoning_content".into()),
+        preserve_tool_call_reasoning: Some(true),
+        ..Default::default()
+    }
+}
+
 fn thinking_only(thinking_param: &str, preserve_tool_call_reasoning: bool) -> ChatReasoningConfig {
     ChatReasoningConfig {
         supports_thinking: Some(true),
@@ -201,6 +213,9 @@ fn infer_custom_reasoning_config(base_url: &str) -> Option<ChatReasoningConfig> 
     }
     if base.contains("mimo") || base.contains("xiaomimimo") {
         return Some(thinking_only("enable_thinking", true));
+    }
+    if base.contains("integrate.api.nvidia.com") || base.contains("api.nvidia.com") {
+        return Some(nvidia_thinking());
     }
     None
 }

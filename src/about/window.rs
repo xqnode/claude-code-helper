@@ -4,66 +4,65 @@ use tao::event_loop::EventLoopWindowTarget;
 use tao::window::{Window, WindowBuilder, WindowId};
 use wry::WebViewBuilder;
 
-static LOGS_OPEN: AtomicBool = AtomicBool::new(false);
+static ABOUT_OPEN: AtomicBool = AtomicBool::new(false);
 
-pub struct LogsWindow {
+pub struct AboutWindow {
     pub window: Window,
     _webview: wry::WebView,
 }
 
-pub fn open_logs_on_loop<T>(
+pub fn open_about_on_loop<T>(
     elwt: &EventLoopWindowTarget<T>,
     proxy_port: u16,
-) -> anyhow::Result<LogsWindow> {
-    if LOGS_OPEN.swap(true, Ordering::SeqCst) {
-        anyhow::bail!("logs already open");
+) -> anyhow::Result<AboutWindow> {
+    if ABOUT_OPEN.swap(true, Ordering::SeqCst) {
+        anyhow::bail!("about already open");
     }
 
-    match create_logs_window(elwt, proxy_port) {
+    match create_about_window(elwt, proxy_port) {
         Ok(window) => Ok(window),
         Err(err) => {
-            LOGS_OPEN.store(false, Ordering::SeqCst);
+            ABOUT_OPEN.store(false, Ordering::SeqCst);
             Err(err)
         }
     }
 }
 
-pub fn close_logs_window(slot: &mut Option<LogsWindow>, window_id: WindowId) -> bool {
-    let Some(logs) = slot.as_ref() else {
+pub fn close_about_window(slot: &mut Option<AboutWindow>, window_id: WindowId) -> bool {
+    let Some(about) = slot.as_ref() else {
         return false;
     };
-    if logs.window.id() != window_id {
+    if about.window.id() != window_id {
         return false;
     }
-    if let Some(logs) = slot.take() {
-        crate::platform::suppress_native_stderr(|| drop(logs));
+    if let Some(about) = slot.take() {
+        crate::platform::suppress_native_stderr(|| drop(about));
     }
-    LOGS_OPEN.store(false, Ordering::SeqCst);
+    ABOUT_OPEN.store(false, Ordering::SeqCst);
     true
 }
 
-pub fn focus_logs_window(slot: &Option<LogsWindow>) {
-    if let Some(logs) = slot {
-        let _ = logs.window.set_focus();
+pub fn focus_about_window(slot: &Option<AboutWindow>) {
+    if let Some(about) = slot {
+        let _ = about.window.set_focus();
     }
 }
 
-fn create_logs_window<T>(
+fn create_about_window<T>(
     elwt: &EventLoopWindowTarget<T>,
     proxy_port: u16,
-) -> anyhow::Result<LogsWindow> {
+) -> anyhow::Result<AboutWindow> {
     let window = WindowBuilder::new()
-        .with_title("Claude Code Helper · 请求日志")
+        .with_title("Claude Code Helper · 关于")
         .with_window_icon(Some(crate::icon::window_icon()))
-        .with_inner_size(tao::dpi::LogicalSize::new(1020.0, 580.0))
-        .with_resizable(true)
+        .with_inner_size(tao::dpi::LogicalSize::new(400.0, 360.0))
+        .with_resizable(false)
         .with_maximizable(false)
-        .with_min_inner_size(tao::dpi::LogicalSize::new(860.0, 400.0))
         .build(elwt)?;
 
     center_on_screen(&window);
 
-    let url = format!("http://127.0.0.1:{proxy_port}/admin/logs");
+    let url = format!("http://127.0.0.1:{proxy_port}/admin/about");
     let webview = crate::platform::suppress_native_stderr(|| {
         WebViewBuilder::new()
             .with_devtools(false)
@@ -72,7 +71,7 @@ fn create_logs_window<T>(
     })?;
     crate::icon::apply_window_icon(&window);
 
-    Ok(LogsWindow {
+    Ok(AboutWindow {
         window,
         _webview: webview,
     })

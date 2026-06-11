@@ -536,8 +536,13 @@
         <label class="field-label" for="reasoningEffortSelect">思考强度</label>
         <select id="reasoningEffortSelect" class="text-input" aria-label="思考强度"></select>
       </div>
+      <div class="field" id="wireApiField" hidden>
+        <label class="field-label" for="wireApiSelect">接入协议</label>
+        <select id="wireApiSelect" class="text-input" aria-label="接入协议"></select>
+        <p class="field-foot" id="wireApiHint">适用于兼容 OpenAI API 的代理、聚合平台和自建服务。</p>
+      </div>
       <div class="field">
-        <label class="field-label" for="baseUrlInput">Base URL</label>
+        <label class="field-label" for="baseUrlInput" id="baseUrlLabel">Base URL</label>
         <input id="baseUrlInput" class="text-input" type="url" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false" />
         <p class="field-foot" id="baseUrlHint">OpenAI 兼容 API 地址，末尾一般带 /v1</p>
       </div>
@@ -589,6 +594,20 @@
     let selectedId = '';
     let runtimeActive = '';
     let modelReasoningEffort = 'medium';
+    let selectedWireApi = 'chat';
+
+    const WIRE_API_OPTIONS = [
+      {
+        value: 'chat',
+        label: 'OpenAI-compatible',
+        hint: '适用于兼容 OpenAI API 的代理、聚合平台和自建服务。',
+      },
+      {
+        value: 'anthropic',
+        label: 'Anthropic-compatible',
+        hint: '适用于原生 Anthropic Messages API 的代理或镜像服务。',
+      },
+    ];
 
     const CUSTOM_EFFORT_OPTIONS = {
       openrouter: [
@@ -646,6 +665,7 @@
       };
       if (isCustom()) {
         payload.custom_models = document.getElementById('customModelsInput').value.trim();
+        payload.wire_api = selectedWireApi;
       }
       return payload;
     }
@@ -684,6 +704,7 @@
       selectedId = id;
       hideStatus();
       renderProviderGrid();
+      refreshWireApiField();
       refreshBaseUrlField();
       refreshReasoningEffortField();
       refreshCustomModelsField();
@@ -715,6 +736,43 @@
         : (values.includes('medium') ? 'medium' : (values[0] || 'medium'));
     }
 
+    function wireApiHint(value) {
+      const opt = WIRE_API_OPTIONS.find(item => item.value === value);
+      return opt ? opt.hint : '';
+    }
+
+    function refreshWireApiField() {
+      const field = document.getElementById('wireApiField');
+      const select = document.getElementById('wireApiSelect');
+      const hint = document.getElementById('wireApiHint');
+      const custom = isCustom();
+      field.hidden = !custom;
+      if (!custom) return;
+
+      const p = selected();
+      selectedWireApi = p?.wire_api === 'anthropic' ? 'anthropic' : 'chat';
+      select.innerHTML = '';
+      WIRE_API_OPTIONS.forEach(opt => {
+        const item = document.createElement('option');
+        item.value = opt.value;
+        item.textContent = opt.label;
+        select.appendChild(item);
+      });
+      select.value = selectedWireApi;
+      hint.textContent = wireApiHint(selectedWireApi);
+    }
+
+    function onWireApiChange() {
+      if (!isCustom()) return;
+      const value = document.getElementById('wireApiSelect').value;
+      if (selectedWireApi === value) return;
+      selectedWireApi = value;
+      hideStatus();
+      document.getElementById('wireApiHint').textContent = wireApiHint(value);
+      refreshBaseUrlField();
+      refreshReasoningEffortField();
+    }
+
     function refreshCustomModelsField() {
       const p = selected();
       const field = document.getElementById('customModelsField');
@@ -733,16 +791,27 @@
       const p = selected();
       const input = document.getElementById('baseUrlInput');
       const hint = document.getElementById('baseUrlHint');
+      const label = document.getElementById('baseUrlLabel');
       const custom = isCustom();
 
       input.value = p?.base_url || '';
       input.readOnly = false;
       input.classList.remove('readonly');
-      input.placeholder = custom ? 'https://api.example.com/v1' : (p?.base_url || 'https://api.example.com/v1');
 
-      hint.textContent = custom
-        ? '中转站 API 地址，末尾一般带 /v1；保存后永久写入本地'
-        : '可改为镜像/代理地址；保存后永久写入本地，留空则恢复官方默认';
+      if (custom) {
+        label.textContent = 'API 地址';
+        if (selectedWireApi === 'anthropic') {
+          input.placeholder = 'https://api.example.com/anthropic';
+          hint.textContent = 'Anthropic Messages API 地址，末尾一般带 /anthropic；保存后永久写入本地';
+        } else {
+          input.placeholder = 'https://api.example.com/v1';
+          hint.textContent = 'OpenAI 兼容 API 地址，末尾一般带 /v1；保存后永久写入本地';
+        }
+      } else {
+        label.textContent = 'Base URL';
+        input.placeholder = p?.base_url || 'https://api.example.com/v1';
+        hint.textContent = '可改为镜像/代理地址；保存后永久写入本地，留空则恢复官方默认';
+      }
     }
 
     function updateSignupLink() {
@@ -795,11 +864,14 @@
       updateSubtitle();
       updateSignupLink();
       updateKeyBadge(!!selected()?.key_configured);
+      refreshWireApiField();
       refreshBaseUrlField();
       refreshReasoningEffortField();
       refreshCustomModelsField();
       refreshKeyField();
     }
+
+    document.getElementById('wireApiSelect').addEventListener('change', onWireApiChange);
 
     document.getElementById('baseUrlInput').addEventListener('input', () => {
       hideStatus();
@@ -933,6 +1005,7 @@
             p.key_configured = true;
             p.key_preview = maskKey(key);
           }
+          refreshWireApiField();
           refreshBaseUrlField();
           refreshReasoningEffortField();
           refreshCustomModelsField();
@@ -951,7 +1024,7 @@
     document.getElementById('clearAllBtn').addEventListener('click', async () => {
       const ok = await showConfirmDialog(
         '清除所有配置？',
-        '将删除全部 API Key、重置厂商/模型与中转站地址，并清空请求日志。Claude Code 需重新配置。'
+        '将删除全部 API Key、重置厂商/模型与自定义地址，并清空请求日志。Claude Code 需重新配置。'
       );
       if (!ok) return;
       showStatus('正在清除…', 'info');

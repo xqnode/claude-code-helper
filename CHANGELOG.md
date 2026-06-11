@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.4] - 2026-06-11
+
+### Added
+
+- 关于页面：显示作者（程序员青戈）、B 站主页链接与版本号；托盘菜单「关于…」入口
+
+### Changed
+
+- 「中转站」更名为「自定义」；接入协议改为下拉选择（OpenAI-compatible / Anthropic-compatible）
+- 自定义模型 ID 支持 `vendor/model` 命名空间格式（如 `deepseek-ai/deepseek-v4-pro`）
+- 自定义 OpenAI 协议可对接 NVIDIA 等上游：Claude 角色模型自动映射、reasoning 参数注入
+- 启动更静默：移除 CLI 启动输出、取消首次自动打开设置页、加强 WebView2 stderr 抑制
+- 设置/关于/请求日志弹窗隐藏最大化按钮
+
+### Removed
+
+- 移除内置 NVIDIA 预设（请通过「自定义」+ OpenAI 协议配置）
+
+## [0.2.3] - 2026-06-10
+
+### Changed
+
+- 自定义厂商根据 Base URL 自动推断 OpenAI relay 的 `wire_api`（chat）
+
 ## [0.2.2] - 2026-06-07
 
 ### Added

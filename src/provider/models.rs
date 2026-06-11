@@ -126,11 +126,13 @@ pub fn validate_custom_model_id(id: &str) -> anyhow::Result<()> {
     if !first.is_ascii_alphanumeric() {
         anyhow::bail!("模型 ID 需以字母或数字开头");
     }
-    if !id
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
-    {
-        anyhow::bail!("模型 ID 仅支持字母、数字、点、下划线、连字符");
+    if !id.chars().all(|ch| {
+        ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-' | '/')
+    }) {
+        anyhow::bail!("模型 ID 仅支持字母、数字、点、下划线、连字符、斜杠");
+    }
+    if id.contains("//") {
+        anyhow::bail!("模型 ID 不能包含连续的斜杠");
     }
     Ok(())
 }
@@ -263,6 +265,10 @@ const RELAY_CLAUDE_MODELS: &[ModelVariant] = &[
         menu_tag: "sonnet-4.6",
     },
 ];
+
+pub fn is_relay_default_slug(slug: &str) -> bool {
+    RELAY_CLAUDE_MODELS.iter().any(|m| m.slug == slug)
+}
 
 pub fn apply_model_variant(
     provider: &mut crate::config::ProviderConfig,
@@ -524,6 +530,12 @@ mod tests {
     fn normalize_custom_models_deduplicates() {
         let models = normalize_custom_models("a\na\nb").unwrap();
         assert_eq!(models, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn normalize_custom_models_accepts_namespaced_ids() {
+        let models = normalize_custom_models("deepseek-ai/deepseek-v4-pro").unwrap();
+        assert_eq!(models, vec!["deepseek-ai/deepseek-v4-pro".to_string()]);
     }
 
     #[test]

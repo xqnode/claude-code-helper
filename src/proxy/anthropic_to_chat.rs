@@ -1,5 +1,6 @@
 use serde_json::{json, Value};
 
+use crate::claude::desktop_gateway;
 use crate::config::ProviderConfig;
 
 use super::message_repair::{
@@ -64,6 +65,11 @@ pub fn convert_anthropic_to_chat_with_options(
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .unwrap_or(upstream_model);
+    let requested_model = if let Some(provider) = options.provider {
+        desktop_gateway::resolve_custom_upstream_model(requested_model, provider)
+    } else {
+        requested_model.to_string()
+    };
 
     let stream = value
         .get("stream")
@@ -331,6 +337,39 @@ mod tests {
             base_url_customized: false,
             custom_models: Vec::new(),
         }
+    }
+
+    fn custom_nvidia_provider() -> ProviderConfig {
+        ProviderConfig {
+            id: "custom".into(),
+            name: "自定义".into(),
+            base_url: "https://integrate.api.nvidia.com/v1".into(),
+            api_key_env: "CUSTOM_API_KEY".into(),
+            default_model: "deepseek-ai/deepseek-v4-pro".into(),
+            api_model: "deepseek-ai/deepseek-v4-pro".into(),
+            wire_api: "chat".into(),
+            base_url_customized: true,
+            custom_models: vec!["deepseek-ai/deepseek-v4-pro".into()],
+        }
+    }
+
+    #[test]
+    fn custom_openai_relay_maps_model_and_nvidia_thinking() {
+        let provider = custom_nvidia_provider();
+        let body = br#"{"model":"claude-opus-4-8","messages":[{"role":"user","content":"hi"}]}"#;
+        let out = convert_anthropic_to_chat_with_options(
+            body,
+            provider.upstream_model(),
+            ConvertOptions {
+                provider: Some(&provider),
+                model_reasoning_effort: "medium",
+                tool_output_max_chars: 0,
+            },
+        )
+        .unwrap();
+        let v: Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(v["model"], "deepseek-ai/deepseek-v4-pro");
+        assert_eq!(v["chat_template_kwargs"]["thinking"], true);
     }
 
     #[test]

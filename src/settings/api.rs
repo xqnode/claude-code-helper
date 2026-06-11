@@ -73,6 +73,7 @@ pub async fn settings_bootstrap() -> impl IntoResponse {
             "supports_reasoning_effort": supports_reasoning_effort,
             "reasoning_effort_options": reasoning_effort_options,
             "custom_models": preset.custom_models,
+            "wire_api": preset.wire_api,
         }));
     }
 
@@ -95,6 +96,8 @@ pub struct SettingsSaveBody {
     model_reasoning_effort: Option<String>,
     #[serde(default)]
     custom_models: String,
+    #[serde(default)]
+    wire_api: String,
 }
 
 pub async fn settings_save(
@@ -108,6 +111,7 @@ pub async fn settings_save(
         body.base_url.trim(),
         body.model_reasoning_effort.as_deref(),
         body.custom_models.trim(),
+        body.wire_api.trim(),
     )
     .await
     {
@@ -133,6 +137,8 @@ pub struct SettingsTestBody {
     base_url: String,
     #[serde(default)]
     custom_models: String,
+    #[serde(default)]
+    wire_api: String,
 }
 pub async fn settings_test(Json(body): Json<SettingsTestBody>) -> impl IntoResponse {
     let app = match AppConfig::load() {
@@ -165,6 +171,13 @@ pub async fn settings_test(Json(body): Json<SettingsTestBody>) -> impl IntoRespo
         .into_response();
     }
     if let Err(err) = apply_custom_models(&mut provider, body.custom_models.trim()) {
+        return Json(serde_json::json!({
+            "ok": false,
+            "message": format!("{err:#}"),
+        }))
+        .into_response();
+    }
+    if let Err(err) = apply_custom_wire_api(&mut provider, body.wire_api.trim()) {
         return Json(serde_json::json!({
             "ok": false,
             "message": format!("{err:#}"),
@@ -218,7 +231,7 @@ async fn clear_all_settings(state: &ProxyState) -> anyhow::Result<String> {
     state.request_log.clear().await;
     request_tray_health_check(state);
     Ok(
-        "已清除所有 Helper 配置（API Key、厂商选择、中转站地址）。请重新填写 Key 并重启 Claude Code。"
+        "已清除所有 Helper 配置（API Key、厂商选择、自定义地址）。请重新填写 Key 并重启 Claude Code。"
             .into(),
     )
 }
@@ -230,6 +243,7 @@ async fn save_api_key(
     base_url: &str,
     model_reasoning_effort: Option<&str>,
     custom_models: &str,
+    wire_api: &str,
 ) -> anyhow::Result<String> {
     let mut app = AppConfig::load()?;
     provider::get_preset(&app, provider_id)?;
@@ -240,6 +254,7 @@ async fn save_api_key(
 
     apply_provider_base_url(provider_entry, base_url)?;
     apply_custom_models(provider_entry, custom_models)?;
+    apply_custom_wire_api(provider_entry, wire_api)?;
 
     let provider = provider_entry.clone();
     if let Some(effort) = model_reasoning_effort {
@@ -287,7 +302,6 @@ fn apply_provider_base_url(
             provider.base_url = config::validate_base_url(base_url)?;
         }
         provider.base_url_customized = true;
-        provider.wire_api = provider::infer_custom_wire_api(&provider.base_url).into();
         return Ok(());
     }
 
@@ -300,6 +314,31 @@ fn apply_provider_base_url(
     provider.base_url = config::validate_base_url(base_url)?;
     provider.base_url_customized = provider.base_url != default_url;
     Ok(())
+}
+
+fn apply_custom_wire_api(
+    provider: &mut config::ProviderConfig,
+    wire_api: &str,
+) -> anyhow::Result<()> {
+    if provider.id != "custom" {
+        return Ok(());
+    }
+    if wire_api.is_empty() {
+        if !provider.base_url.trim().is_empty() {
+            provider.wire_api = provider::infer_custom_wire_api(&provider.base_url).into();
+        }
+        return Ok(());
+    }
+    provider.wire_api = normalize_wire_api(wire_api)?.into();
+    Ok(())
+}
+
+fn normalize_wire_api(value: &str) -> anyhow::Result<&'static str> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "chat" | "openai" | "openai-compatible" => Ok("chat"),
+        "anthropic" | "anthropic-compatible" => Ok("anthropic"),
+        _ => anyhow::bail!("未知接入协议: {value}"),
+    }
 }
 
 fn apply_custom_models(
@@ -367,11 +406,17 @@ pub async fn test_api_key(provider: &config::ProviderConfig, api_key: &str) -> a
         "{}/chat/completions",
         provider.base_url.trim_end_matches('/')
     );
-    let body = serde_json::json!({
+    let app = AppConfig::load()?;
+    let mut body = serde_json::json!({
         "model": provider.upstream_model(),
         "messages": [{"role": "user", "content": "ping"}],
         "max_tokens": 8
     });
+    crate::proxy::apply_default_reasoning_effort(
+        &mut body,
+        &app.normalized_model_reasoning_effort(),
+        provider,
+    );
     let resp = client
         .post(url)
         .bearer_auth(api_key)

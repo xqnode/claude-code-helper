@@ -125,6 +125,9 @@ fn apply_thinking_param(chat: &mut Value, config: &ChatReasoningConfig, reasonin
         "reasoning_split" => {
             chat["reasoning_split"] = json!(reasoning_enabled);
         }
+        "chat_template_kwargs" => {
+            chat["chat_template_kwargs"] = json!({ "thinking": reasoning_enabled });
+        }
         _ => {}
     }
 }
@@ -367,4 +370,5 @@ mod tests {
         assert_eq!(chat["thinking"]["type"], "disabled");
         assert!(chat.get("reasoning_split").is_none());
     }
+
 }

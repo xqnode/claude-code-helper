@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Claude Code Helper · 关于</title>
+  <link rel="icon" type="image/svg+xml" href="/admin/brand-icon.svg" />
+  <style>
+    :root {
+      --bg: #eef2f7;
+      --surface: #ffffff;
+      --text: #0f172a;
+      --text-secondary: #64748b;
+      --text-muted: #94a3b8;
+      --border: #e2e8f0;
+      --primary: #2563eb;
+      --primary-soft: rgba(37, 99, 235, 0.1);
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+      --font: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 360px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px 22px;
+      text-align: center;
+    }
+
+    .brand-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 14px;
+      border-radius: 14px;
+      box-shadow: 0 6px 18px rgba(37, 99, 235, 0.28);
+    }
+
+    .brand-icon svg {
+      display: block;
+      width: 48px;
+      height: 48px;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+      line-height: 1.3;
+    }
+
+    .tagline {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .meta {
+      margin-top: 20px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+      text-align: left;
+    }
+
+    .meta-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .meta-row + .meta-row {
+      margin-top: 10px;
+    }
+
+    .meta-label {
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .meta-value {
+      color: var(--text);
+      font-weight: 600;
+      text-align: right;
+      word-break: break-all;
+    }
+
+    .meta-link {
+      color: var(--primary);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .meta-link:hover {
+      text-decoration: underline;
+    }
+
+    .version-badge {
+      display: inline-block;
+      margin-top: 14px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--primary-soft);
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+    }
+  </style>
+</head>
+<body>
+  <main class="card" aria-labelledby="about-title">
+    <div class="brand-icon" aria-hidden="true"><!--BRAND_ICON--></div>
+    <h1 id="about-title">Claude Code Helper</h1>
+    <p class="tagline">让 Claude Code 一键切换 DeepSeek、千问等国产大模型</p>
+    <div class="version-badge">v<!--VERSION--></div>
+    <div class="meta">
+      <div class="meta-row">
+        <span class="meta-label">作者</span>
+        <span class="meta-value">程序员青戈</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">B站主页</span>
+        <a class="meta-link" href="https://space.bilibili.com/402779077" target="_blank" rel="noopener">@程序员青戈</a>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

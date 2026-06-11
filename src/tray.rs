@@ -20,6 +20,8 @@ use tray_icon::{
 };
 
 #[cfg(windows)]
+use crate::about;
+#[cfg(windows)]
 use crate::actions;
 #[cfg(windows)]
 use crate::config::{self, AppConfig};
@@ -35,6 +37,7 @@ enum TrayUserEvent {
     RefreshUi,
     OpenSettings,
     OpenLogs,
+    OpenAbout,
     CheckHealth,
 }
 
@@ -97,6 +100,7 @@ pub async fn run_with_proxy(app: AppConfig) -> anyhow::Result<()> {
     let settings_slot: Rc<RefCell<Option<settings::SettingsWindow>>> =
         Rc::new(RefCell::new(None));
     let logs_slot: Rc<RefCell<Option<logs::LogsWindow>>> = Rc::new(RefCell::new(None));
+    let about_slot: Rc<RefCell<Option<about::AboutWindow>>> = Rc::new(RefCell::new(None));
 
     let ctx = Arc::new(TrayContext {
         config,
@@ -106,15 +110,12 @@ pub async fn run_with_proxy(app: AppConfig) -> anyhow::Result<()> {
         rt: rt_handle,
         settings: settings_slot.clone(),
         logs: logs_slot.clone(),
+        about: about_slot.clone(),
         health: Arc::new(RwLock::new(ProviderHealth::default())),
     });
 
     let menu_channel = MenuEvent::receiver();
     let ctx_for_loop = ctx.clone();
-
-    if settings::needs_first_run_setup() {
-        let _ = ctx.loop_proxy.send_event(TrayUserEvent::OpenSettings);
-    }
 
     // 托盘事件循环会阻塞当前线程；block_in_place 让 Tokio 继续在其它 worker 上跑代理
     tokio::task::block_in_place(|| {
@@ -167,6 +168,23 @@ pub async fn run_with_proxy(app: AppConfig) -> anyhow::Result<()> {
                         Err(err) => tracing::error!("打开请求日志: {err:#}"),
                     }
                 }
+                Event::UserEvent(TrayUserEvent::OpenAbout) => {
+                    let mut slot = ctx_for_loop.about.borrow_mut();
+                    if slot.is_some() {
+                        about::focus_about_window(&slot);
+                        return;
+                    }
+                    let port = ctx_for_loop.rt.block_on(async {
+                        ctx_for_loop.config.read().await.proxy.port
+                    });
+                    match about::open_about_on_loop(elwt, port) {
+                        Ok(window) => *slot = Some(window),
+                        Err(err) if err.to_string().contains("already open") => {
+                            about::focus_about_window(&slot);
+                        }
+                        Err(err) => tracing::error!("打开关于窗口: {err:#}"),
+                    }
+                }
                 Event::WindowEvent {
                     window_id,
                     event: WindowEvent::CloseRequested,
@@ -177,7 +195,11 @@ pub async fn run_with_proxy(app: AppConfig) -> anyhow::Result<()> {
                         return;
                     }
                     let mut logs_slot = ctx_for_loop.logs.borrow_mut();
-                    logs::close_logs_window(&mut logs_slot, window_id);
+                    if logs::close_logs_window(&mut logs_slot, window_id) {
+                        return;
+                    }
+                    let mut about_slot = ctx_for_loop.about.borrow_mut();
+                    about::close_about_window(&mut about_slot, window_id);
                 }
                 _ => {}
             }
@@ -200,6 +222,7 @@ struct TrayContext {
     rt: tokio::runtime::Handle,
     settings: Rc<RefCell<Option<settings::SettingsWindow>>>,
     logs: Rc<RefCell<Option<logs::LogsWindow>>>,
+    about: Rc<RefCell<Option<about::AboutWindow>>>,
     health: Arc<RwLock<ProviderHealth>>,
 }
 
@@ -215,6 +238,7 @@ fn handle_menu_click(ctx: &Arc<TrayContext>, id: &str) {
         // 先释放 WebView，避免 Chromium 在进程退出时刷 stderr 噪音。
         ctx.settings.borrow_mut().take();
         ctx.logs.borrow_mut().take();
+        ctx.about.borrow_mut().take();
         std::process::exit(0);
     }
     if id == "settings" {
@@ -223,6 +247,10 @@ fn handle_menu_click(ctx: &Arc<TrayContext>, id: &str) {
     }
     if id == "request_logs" {
         let _ = ctx.loop_proxy.send_event(TrayUserEvent::OpenLogs);
+        return;
+    }
+    if id == "about" {
+        let _ = ctx.loop_proxy.send_event(TrayUserEvent::OpenAbout);
         return;
     }
     if id == "open_helper" {
@@ -554,6 +582,12 @@ fn build_menu(app: &AppConfig, health: &ProviderHealth) -> anyhow::Result<Menu> 
     menu.append(&MenuItem::with_id(
         "request_logs",
         "请求日志…",
+        true,
+        None,
+    ))?;
+    menu.append(&MenuItem::with_id(
+        "about",
+        "关于…",
         true,
         None,
     ))?;

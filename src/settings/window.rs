@@ -7,24 +7,11 @@ use tao::platform::windows::EventLoopBuilderExtWindows;
 use tao::window::{Window, WindowBuilder, WindowId};
 use wry::WebViewBuilder;
 
-use crate::config::{self, AppConfig};
-
 static SETTINGS_OPEN: AtomicBool = AtomicBool::new(false);
 
 pub struct SettingsWindow {
     pub window: Window,
     _webview: wry::WebView,
-}
-
-/// 当前模型没有 Key 时需要首次引导。
-pub fn needs_first_run_setup() -> bool {
-    let Ok(app) = AppConfig::load() else {
-        return true;
-    };
-    let Ok(provider) = app.active_provider() else {
-        return true;
-    };
-    config::resolve_api_key(&provider.api_key_env).is_err()
 }
 
 /// 在托盘事件循环中打开设置窗口（关闭窗口不会退出 Helper）。
@@ -52,7 +39,9 @@ pub fn close_settings_window(slot: &mut Option<SettingsWindow>, window_id: Windo
     if settings.window.id() != window_id {
         return false;
     }
-    slot.take();
+    if let Some(settings) = slot.take() {
+        crate::platform::suppress_native_stderr(|| drop(settings));
+    }
     SETTINGS_OPEN.store(false, Ordering::SeqCst);
     true
 }
@@ -111,15 +100,18 @@ fn create_settings_window<T>(
         .with_window_icon(Some(crate::icon::window_icon()))
         .with_inner_size(tao::dpi::LogicalSize::new(440.0, 480.0))
         .with_resizable(false)
+        .with_maximizable(false)
         .build(elwt)?;
 
     center_on_screen(&window);
 
     let url = format!("http://127.0.0.1:{proxy_port}/admin/settings");
-    let webview = WebViewBuilder::new()
-        .with_devtools(false)
-        .with_url(&url)
-        .build(&window)?;
+    let webview = crate::platform::suppress_native_stderr(|| {
+        WebViewBuilder::new()
+            .with_devtools(false)
+            .with_url(&url)
+            .build(&window)
+    })?;
     crate::icon::apply_window_icon(&window);
 
     Ok(SettingsWindow {

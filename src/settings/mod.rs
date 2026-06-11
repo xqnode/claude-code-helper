@@ -9,18 +9,13 @@ pub use api::{brand_icon_svg, settings_bootstrap, settings_clear_all, settings_p
 
 #[cfg(windows)]
 pub use window::{
-    close_settings_window, focus_settings_window, needs_first_run_setup,
-    open_settings_on_loop, open_settings_window, SettingsWindow,
+    close_settings_window, focus_settings_window, open_settings_on_loop, open_settings_window,
+    SettingsWindow,
 };
 
 #[cfg(not(windows))]
 pub fn open_settings_window(_proxy_port: u16) {
     eprintln!("设置窗口目前仅支持 Windows，请使用: claude-code-helper env set DEEPSEEK_API_KEY sk-xxx");
-}
-
-#[cfg(not(windows))]
-pub fn needs_first_run_setup() -> bool {
-    false
 }
 
 pub fn signup_url(provider_id: &str) -> &'static str {

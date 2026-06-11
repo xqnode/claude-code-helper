@@ -24,11 +24,13 @@ mod message_repair;
 mod reasoning_options;
 mod sse;
 mod upstream_retry;
+pub use reasoning_options::apply_default_reasoning_effort;
 use anthropic_to_chat::{convert_anthropic_to_chat_with_options, ConvertOptions};
 use chat_to_anthropic::{
     anthropic_stream_preamble, convert_chat_json_to_anthropic, AnthropicSseTranslator,
 };
 use logged_stream::LoggingByteStream;
+use crate::about::about_page;
 use crate::logs::{logs_bootstrap, logs_clear, logs_page};
 use crate::request_log::{
     extract_model_from_body, parse_usage_from_json, PendingRequest, RequestLogStore,
@@ -139,6 +141,7 @@ async fn run_listener(state: Arc<ProxyState>, addr: &str) -> anyhow::Result<()> 
         .route("/admin/logs", get(logs_page))
         .route("/admin/logs/bootstrap", get(logs_bootstrap))
         .route("/admin/logs/clear", post(logs_clear))
+        .route("/admin/about", get(about_page))
         .route("/v1/models", get(list_models))
         .route("/v1/messages", post(proxy_messages))
         .route("/claude-desktop/v1/models", get(list_desktop_models))

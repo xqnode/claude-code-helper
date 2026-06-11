@@ -233,6 +233,32 @@ pub fn build_inference_models(provider: &ProviderConfig) -> Vec<Value> {
     ]
 }
 
+pub fn resolve_custom_upstream_model(requested: &str, provider: &ProviderConfig) -> String {
+    if provider.id != "custom" || provider.uses_anthropic_upstream() {
+        return requested.to_string();
+    }
+    if crate::provider::models::list_models(provider)
+        .into_iter()
+        .any(|m| m.slug == requested || m.api_model == requested)
+    {
+        return requested.to_string();
+    }
+    if is_desktop_role_model(requested) {
+        return map_desktop_model(requested, provider);
+    }
+    if crate::provider::models::is_relay_default_slug(requested) {
+        return map_relay_slug_to_upstream(requested, provider);
+    }
+    provider.upstream_model().to_string()
+}
+
+fn map_relay_slug_to_upstream(requested: &str, provider: &ProviderConfig) -> String {
+    match requested {
+        "claude-opus-4-8" | "claude-opus-4-7" => upstream_model_for_tier(provider, "pro"),
+        _ => upstream_model_for_tier(provider, "flash"),
+    }
+}
+
 pub fn map_desktop_model(requested: &str, provider: &ProviderConfig) -> String {
     let lower = requested.to_ascii_lowercase();
     if lower.contains("haiku") {
@@ -424,6 +450,29 @@ mod tests {
         assert_eq!(
             map_desktop_model(DESKTOP_ROLE_OPUS, &provider),
             "deepseek-v4-pro"
+        );
+    }
+
+    #[test]
+    fn custom_nvidia_maps_claude_roles_to_namespaced_model() {
+        let provider = ProviderConfig {
+            id: "custom".into(),
+            name: "自定义".into(),
+            base_url: "https://integrate.api.nvidia.com/v1".into(),
+            api_key_env: "CUSTOM_API_KEY".into(),
+            default_model: "deepseek-ai/deepseek-v4-pro".into(),
+            api_model: "deepseek-ai/deepseek-v4-pro".into(),
+            wire_api: "chat".into(),
+            base_url_customized: true,
+            custom_models: vec!["deepseek-ai/deepseek-v4-pro".into()],
+        };
+        assert_eq!(
+            resolve_custom_upstream_model("claude-opus-4-8", &provider),
+            "deepseek-ai/deepseek-v4-pro"
+        );
+        assert_eq!(
+            resolve_custom_upstream_model("deepseek-ai/deepseek-v4-pro", &provider),
+            "deepseek-ai/deepseek-v4-pro"
         );
     }
 }

@@ -29,6 +29,13 @@ pub fn popular_models(provider_id: &str) -> &'static [ModelVariant] {
     }
 }
 
+const MIMO_TOKEN_PLAN_FLASH: &str = "mimo-v2.5";
+const MIMO_TOKEN_PLAN_PRO: &str = "mimo-v2.5-pro";
+
+fn mimo_uses_token_plan(base_url: &str) -> bool {
+    base_url.contains("token-plan")
+}
+
 pub fn list_models(provider: &crate::config::ProviderConfig) -> Vec<ModelEntry> {
     if provider.id == "custom" {
         if provider.custom_models.is_empty() {
@@ -42,6 +49,11 @@ pub fn list_models(provider: &crate::config::ProviderConfig) -> Vec<ModelEntry> 
     }
     popular_models(&provider.id)
         .iter()
+        .filter(|m| {
+            !(provider.id == "mimo"
+                && mimo_uses_token_plan(&provider.base_url)
+                && m.slug == "mimo-v2-flash")
+        })
         .map(|m| static_model_entry(m))
         .collect()
 }
@@ -334,6 +346,13 @@ pub fn sync_model_metadata(provider: &mut crate::config::ProviderConfig) {
 }
 
 pub fn model_for_tier(provider: &crate::config::ProviderConfig, tier: &str) -> String {
+    if provider.id == "mimo" && mimo_uses_token_plan(&provider.base_url) {
+        return match tier {
+            "pro" => MIMO_TOKEN_PLAN_PRO.to_string(),
+            _ => MIMO_TOKEN_PLAN_FLASH.to_string(),
+        };
+    }
+
     if provider.id == "custom" || popular_models(&provider.id).is_empty() {
         let models = list_models(provider);
         return match tier {
@@ -364,6 +383,13 @@ pub fn model_for_tier(provider: &crate::config::ProviderConfig, tier: &str) -> S
 }
 
 pub fn label_for_tier(provider: &crate::config::ProviderConfig, tier: &str) -> String {
+    if provider.id == "mimo" && mimo_uses_token_plan(&provider.base_url) {
+        return match tier {
+            "pro" => MIMO_TOKEN_PLAN_PRO.to_string(),
+            _ => MIMO_TOKEN_PLAN_FLASH.to_string(),
+        };
+    }
+
     if provider.id == "custom" || popular_models(&provider.id).is_empty() {
         let models = list_models(provider);
         return match tier {
@@ -489,6 +515,25 @@ mod tests {
         assert_eq!(format_context_window(1_000_000), "1M");
         assert_eq!(format_context_window(256_000), "256K");
         assert_eq!(format_context_window(128_000), "128K");
+    }
+
+    #[test]
+    fn token_plan_mimo_maps_flash_tier_to_v25() {
+        let mut p = provider("mimo", "mimo-v2.5");
+        p.base_url = "https://token-plan-sgp.xiaomimimo.com/v1".into();
+        p.base_url_customized = true;
+        assert_eq!(model_for_tier(&p, "flash"), "mimo-v2.5");
+        assert_eq!(model_for_tier(&p, "pro"), "mimo-v2.5-pro");
+        assert_eq!(label_for_tier(&p, "flash"), "mimo-v2.5");
+        assert_eq!(list_models(&p).len(), 2);
+        assert!(list_models(&p).iter().all(|m| m.slug != "mimo-v2-flash"));
+    }
+
+    #[test]
+    fn paygo_mimo_still_uses_flash_model() {
+        let p = provider("mimo", "mimo-v2.5-pro");
+        assert_eq!(model_for_tier(&p, "flash"), "mimo-v2-flash");
+        assert_eq!(list_models(&p).len(), 3);
     }
 
     #[test]

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.5] - 2026-06-12
+
+### Fixed
+
+- 同步 Claude Desktop Gateway 时，将 `settings.json` 的 `model` 与 `ANTHROPIC_*` 环境变量统一为 Gateway 角色 ID（如 `claude-opus-4-8`），修复 Desktop「Configured model not available」
+- 自动将 `sonnet[1m]`、`claude-opus-4-7` 等旧 Anthropic 别名映射为 Gateway 可用模型
+- MiMo Token Plan（`token-plan-*` 端点）将 Haiku/Sonnet 映射到 `mimo-v2.5` 而非不支持的 `mimo-v2-flash`，修复 Desktop Test connection 400
+
 ## [0.2.4] - 2026-06-11
 
 ### Added

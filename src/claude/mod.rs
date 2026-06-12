@@ -177,6 +177,15 @@ fn render_claude_settings(app: &AppConfig, provider: &ProviderConfig) -> anyhow:
         env_map.insert(key, Value::String(value));
     }
 
+    let current_model = root
+        .get("model")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let gateway_model = desktop_gateway::normalize_settings_model_for_gateway(current_model);
+    root.as_object_mut()
+        .expect("settings.json 根节点必须是对象")
+        .insert("model".into(), Value::String(gateway_model));
+
     mark_helper_managed(&mut root);
     write_settings_root(&paths::claude_settings_path()?, &root)?;
     verify_written_base_url(&root, &proxy_base)?;
@@ -184,27 +193,35 @@ fn render_claude_settings(app: &AppConfig, provider: &ProviderConfig) -> anyhow:
 }
 
 fn build_model_env(provider: &ProviderConfig) -> Vec<(String, String)> {
-    let flash = model_slug_for_tier(provider, "flash");
-    let pro = model_slug_for_tier(provider, "pro");
-    let default = provider.default_model.clone();
     let display = provider.catalog_display_name();
 
     vec![
-        ("ANTHROPIC_MODEL".into(), default.clone()),
-        ("ANTHROPIC_DEFAULT_HAIKU_MODEL".into(), flash.clone()),
-        ("ANTHROPIC_DEFAULT_SONNET_MODEL".into(), flash.clone()),
-        ("ANTHROPIC_DEFAULT_OPUS_MODEL".into(), pro.clone()),
+        (
+            "ANTHROPIC_MODEL".into(),
+            desktop_gateway::gateway_role_for_default_model(provider),
+        ),
+        (
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL".into(),
+            desktop_gateway::DESKTOP_ROLE_HAIKU.into(),
+        ),
+        (
+            "ANTHROPIC_DEFAULT_SONNET_MODEL".into(),
+            desktop_gateway::DESKTOP_ROLE_SONNET.into(),
+        ),
+        (
+            "ANTHROPIC_DEFAULT_OPUS_MODEL".into(),
+            desktop_gateway::DESKTOP_ROLE_OPUS.into(),
+        ),
         (
             "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME".into(),
             display.clone(),
         ),
         ("ANTHROPIC_DEFAULT_OPUS_MODEL_NAME".into(), display),
-        ("ANTHROPIC_REASONING_MODEL".into(), pro),
+        (
+            "ANTHROPIC_REASONING_MODEL".into(),
+            desktop_gateway::DESKTOP_ROLE_OPUS.into(),
+        ),
     ]
-}
-
-fn model_slug_for_tier(provider: &ProviderConfig, tier: &str) -> String {
-    crate::provider::models::model_for_tier(provider, tier)
 }
 
 fn helper_env_keys() -> Vec<&'static str> {
@@ -295,7 +312,7 @@ mod tests {
     }
 
     #[test]
-    fn build_model_env_uses_provider_variants() {
+    fn build_model_env_uses_gateway_role_ids() {
         let provider = ProviderConfig {
             id: "deepseek".into(),
             name: "DeepSeek".into(),
@@ -309,10 +326,13 @@ mod tests {
         };
         let env = build_model_env(&provider);
         let map: std::collections::HashMap<_, _> = env.into_iter().collect();
-        assert_eq!(map.get("ANTHROPIC_MODEL").map(String::as_str), Some("deepseek-v4-pro"));
+        assert_eq!(
+            map.get("ANTHROPIC_MODEL").map(String::as_str),
+            Some(desktop_gateway::DESKTOP_ROLE_OPUS)
+        );
         assert_eq!(
             map.get("ANTHROPIC_DEFAULT_SONNET_MODEL").map(String::as_str),
-            Some("deepseek-v4-flash")
+            Some(desktop_gateway::DESKTOP_ROLE_SONNET)
         );
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "claude-code-helper"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 description = "Windows / macOS 轻量托盘·菜单栏代理，让 Claude Code 桌面端一键切换 DeepSeek、通义千问等国产大模型"
 license = "MIT"

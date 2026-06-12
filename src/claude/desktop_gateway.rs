@@ -211,6 +211,64 @@ pub fn is_desktop_role_model(model: &str) -> bool {
         && (lower.contains("haiku") || lower.contains("sonnet") || lower.contains("opus"))
 }
 
+/// Map legacy Anthropic aliases (e.g. `sonnet[1m]`) to Gateway role model IDs.
+pub fn normalize_settings_model_for_gateway(current: &str) -> String {
+    let trimmed = current.trim();
+    if trimmed.is_empty() {
+        return DESKTOP_ROLE_SONNET.to_string();
+    }
+
+    let base = trimmed.split('[').next().unwrap_or(trimmed).trim();
+    if base == DESKTOP_ROLE_HAIKU {
+        return DESKTOP_ROLE_HAIKU.to_string();
+    }
+    if base == DESKTOP_ROLE_SONNET {
+        return DESKTOP_ROLE_SONNET.to_string();
+    }
+    if base == DESKTOP_ROLE_OPUS {
+        return DESKTOP_ROLE_OPUS.to_string();
+    }
+
+    let lower = base.to_ascii_lowercase();
+    if lower.contains("haiku") {
+        return DESKTOP_ROLE_HAIKU.to_string();
+    }
+    if lower.contains("opus") {
+        return DESKTOP_ROLE_OPUS.to_string();
+    }
+    if lower.contains("sonnet") {
+        return DESKTOP_ROLE_SONNET.to_string();
+    }
+
+    let lower_full = trimmed.to_ascii_lowercase();
+    if lower_full.starts_with("haiku") {
+        return DESKTOP_ROLE_HAIKU.to_string();
+    }
+    if lower_full.starts_with("opus") {
+        return DESKTOP_ROLE_OPUS.to_string();
+    }
+    if lower_full.starts_with("sonnet") {
+        return DESKTOP_ROLE_SONNET.to_string();
+    }
+
+    DESKTOP_ROLE_SONNET.to_string()
+}
+
+/// Gateway env vars must use Claude role IDs so Desktop validation passes.
+pub fn gateway_role_for_default_model(provider: &ProviderConfig) -> String {
+    let default = provider.default_model.as_str();
+    if default == upstream_model_for_tier(provider, "pro") {
+        return DESKTOP_ROLE_OPUS.to_string();
+    }
+    if default.contains("haiku") {
+        return DESKTOP_ROLE_HAIKU.to_string();
+    }
+    if default.contains("opus") {
+        return DESKTOP_ROLE_OPUS.to_string();
+    }
+    DESKTOP_ROLE_SONNET.to_string()
+}
+
 pub fn build_inference_models(provider: &ProviderConfig) -> Vec<Value> {
     let (haiku, pro, sonnet) = display_labels_for_desktop_roles(provider);
     let supports_1m = provider_supports_1m(provider);
@@ -400,6 +458,26 @@ mod tests {
         assert_eq!(
             gateway_config_id(25573),
             "00000000-0000-4000-8000-000000255730"
+        );
+    }
+
+    #[test]
+    fn normalizes_legacy_sonnet_alias_for_gateway() {
+        assert_eq!(
+            normalize_settings_model_for_gateway("sonnet[1m]"),
+            DESKTOP_ROLE_SONNET
+        );
+        assert_eq!(
+            normalize_settings_model_for_gateway("claude-opus-4-7"),
+            DESKTOP_ROLE_OPUS
+        );
+        assert_eq!(
+            normalize_settings_model_for_gateway("claude-sonnet-4-6[1m]"),
+            DESKTOP_ROLE_SONNET
+        );
+        assert_eq!(
+            normalize_settings_model_for_gateway(DESKTOP_ROLE_OPUS),
+            DESKTOP_ROLE_OPUS
         );
     }
 
